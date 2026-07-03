@@ -23,6 +23,7 @@ Runtime flow for remote unlock:
 
 TCP packet flow from the scooter:
 
+
 1. `TcpFrameBuffer` splits frames using the configured terminator.
 2. `ManufacturerProtocolParser` validates the base packet shape documented as `G168#DEVICEID#SEQ#LENGTH#COMMAND$`.
 3. `ProtocolRouter` updates device state, telemetry, connection history, and sends configured server ACKs for documented inbound commands.
