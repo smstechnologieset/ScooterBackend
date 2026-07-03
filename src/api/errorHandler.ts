@@ -1,0 +1,36 @@
+import { FastifyError, FastifyReply, FastifyRequest } from "fastify";
+import { ProtocolConfigurationError } from "../protocol/errors";
+import { NotFoundError, OfflineScooterError, UnauthorizedError } from "../utils/errors";
+
+export async function errorHandler(error: FastifyError, _request: FastifyRequest, reply: FastifyReply): Promise<void> {
+  if (error instanceof NotFoundError) {
+    await reply.status(404).send({ error: "not_found", message: error.message });
+    return;
+  }
+
+  if (error instanceof OfflineScooterError) {
+    await reply.status(409).send({ error: "offline_scooter", message: error.message });
+    return;
+  }
+
+  if (error instanceof ProtocolConfigurationError) {
+    await reply.status(422).send({
+      error: "protocol_configuration_incomplete",
+      message: error.message,
+      manufacturerClarificationRequired: true
+    });
+    return;
+  }
+
+  if (error instanceof UnauthorizedError || error.statusCode === 401) {
+    await reply.status(401).send({ error: "unauthorized", message: "Authentication required." });
+    return;
+  }
+
+  if (error.validation) {
+    await reply.status(400).send({ error: "validation_error", message: error.message });
+    return;
+  }
+
+  await reply.status(500).send({ error: "internal_error", message: "Internal server error." });
+}

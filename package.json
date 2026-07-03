@@ -1,0 +1,37 @@
+{
+  "name": "scooter-lock-backend",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Production-oriented TCP and REST backend for smart-lock scooter sharing.",
+  "main": "dist/main.js",
+  "scripts": {
+    "dev": "tsx watch src/main.ts",
+    "start": "node dist/main.js",
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "tsc -p tsconfig.json --noEmit",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate deploy",
+    "simulator": "tsx scripts/scooter-simulator.ts"
+  },
+  "dependencies": {
+    "@fastify/jwt": "^10.1.0",
+    "@fastify/rate-limit": "^10.1.1",
+    "@prisma/client": "^6.1.0",
+    "dotenv": "^16.4.7",
+    "fastify": "^5.2.1",
+    "pino": "^9.5.0",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "prisma": "^6.1.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  }
+}

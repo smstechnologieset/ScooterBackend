@@ -1,0 +1,200 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String        @id @default(uuid())
+  email        String        @unique
+  passwordHash String
+  name         String?
+  role         String        @default("user")
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  rideSessions RideSession[]
+  trips        Trip[]
+  auditLogs    AuditLog[]
+  admin        Admin?
+}
+
+model Admin {
+  id        String     @id @default(uuid())
+  userId    String     @unique
+  email     String     @unique
+  role      String     @default("admin")
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  auditLogs AuditLog[]
+}
+
+model Scooter {
+  id                  String              @id @default(uuid())
+  deviceId            String              @unique
+  simCcid             String?
+  hardwareVersion     String?
+  softwareVersion     String?
+  firmwareVersion     String?
+  batteryPercent      Int?
+  signalStrength      Int?
+  lockState           String              @default("unknown")
+  rideState           String              @default("idle")
+  authenticationState String              @default("unknown")
+  online              Boolean             @default(false)
+  lastHeartbeatAt     DateTime?
+  lastGpsAt           DateTime?
+  latitude            Float?
+  longitude           Float?
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+  connections         ScooterConnection[]
+  telemetry           ScooterTelemetry[]
+  commands            Command[]
+  commandHistory      CommandHistory[]
+  trips               Trip[]
+  rideSessions        RideSession[]
+  locations           Location[]
+}
+
+model ScooterConnection {
+  id               String    @id @default(uuid())
+  scooterId        String?
+  deviceId         String?
+  socketId         String
+  remoteAddress    String
+  remotePort       Int?
+  connectedAt      DateTime  @default(now())
+  disconnectedAt   DateTime?
+  disconnectReason String?
+  scooter          Scooter?  @relation(fields: [scooterId], references: [id], onDelete: SetNull)
+
+  @@index([deviceId])
+  @@index([socketId])
+  @@index([connectedAt])
+}
+
+model ScooterTelemetry {
+  id             String   @id @default(uuid())
+  scooterId      String?
+  deviceId       String
+  command        String
+  sequence       String
+  payloadFields  Json
+  rawPacket      String
+  batteryPercent Int?
+  signalStrength Int?
+  latitude       Float?
+  longitude      Float?
+  receivedAt     DateTime @default(now())
+  scooter        Scooter? @relation(fields: [scooterId], references: [id], onDelete: SetNull)
+
+  @@index([deviceId, receivedAt])
+  @@index([scooterId, receivedAt])
+}
+
+model Command {
+  id             String           @id @default(uuid())
+  scooterId      String
+  deviceId       String
+  type           String
+  status         String           @default("queued")
+  sequence       String
+  payload        Json
+  error          String?
+  retryCount     Int              @default(0)
+  createdAt      DateTime         @default(now())
+  sentAt         DateTime?
+  acknowledgedAt DateTime?
+  timedOutAt     DateTime?
+  scooter        Scooter          @relation(fields: [scooterId], references: [id], onDelete: Cascade)
+  history        CommandHistory[]
+
+  @@index([deviceId, sequence])
+  @@index([scooterId, status])
+}
+
+model CommandHistory {
+  id        String   @id @default(uuid())
+  commandId String?
+  scooterId String
+  deviceId  String
+  type      String
+  status    String
+  message   String?
+  packet    String?
+  createdAt DateTime @default(now())
+  command   Command? @relation(fields: [commandId], references: [id], onDelete: SetNull)
+  scooter   Scooter  @relation(fields: [scooterId], references: [id], onDelete: Cascade)
+
+  @@index([scooterId, createdAt])
+  @@index([commandId])
+}
+
+model Trip {
+  id              String    @id @default(uuid())
+  userId          String
+  scooterId       String
+  startedAt       DateTime
+  endedAt         DateTime?
+  startLocationId String?
+  endLocationId   String?
+  distanceMeters  Int?
+  fareCents       Int?
+  status          String    @default("active")
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  scooter         Scooter   @relation(fields: [scooterId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
+  @@index([scooterId, status])
+}
+
+model RideSession {
+  id          String    @id @default(uuid())
+  userId      String
+  scooterId   String
+  status      String    @default("active")
+  startedAt   DateTime  @default(now())
+  endedAt     DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  scooter     Scooter   @relation(fields: [scooterId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
+  @@index([scooterId, status])
+}
+
+model Location {
+  id         String   @id @default(uuid())
+  scooterId String
+  latitude   Float
+  longitude  Float
+  source     String
+  recordedAt DateTime @default(now())
+  scooter    Scooter  @relation(fields: [scooterId], references: [id], onDelete: Cascade)
+
+  @@index([scooterId, recordedAt])
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  userId     String?
+  adminId    String?
+  action     String
+  entityType String
+  entityId   String?
+  metadata   Json
+  createdAt  DateTime @default(now())
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  admin      Admin?   @relation(fields: [adminId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@index([adminId, createdAt])
+  @@index([entityType, entityId])
+}
