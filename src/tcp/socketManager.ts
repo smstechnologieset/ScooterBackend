@@ -207,12 +207,27 @@ export class TcpSocketManager implements SocketManagerPort {
     this.socketsById.set(socketId, context);
     this.logger.info({ socketId, remoteAddress, remotePort }, "Scooter TCP connection accepted");
 
+    let frameQueue = Promise.resolve();
+
     socket.on("data", (chunk) => {
       try {
         const frames = context.frameBuffer.push(chunk);
 
         for (const frame of frames) {
-          void this.handleFrame(context, router, frame);
+          frameQueue = frameQueue
+            .then(() => this.handleFrame(context, router, frame))
+            .catch((error) => {
+              this.logger.error(
+                {
+                  socketId,
+                  deviceId: context.deviceId,
+                  raw: frame.toString("ascii"),
+                  error
+                },
+                "TCP frame processing failed"
+              );
+              socket.destroy(error instanceof Error ? error : new Error("TCP frame processing failed."));
+            });
         }
       } catch (error) {
         this.logger.warn({ socketId, error }, "Malformed or oversized TCP frame");
