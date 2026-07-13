@@ -2,7 +2,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'routes/account_routes.dart';
-import 'routes/admin_routes.dart';
 import 'routes/auth_routes.dart';
 import 'routes/payment_routes.dart';
 import 'routes/permission_routes.dart';
@@ -20,7 +19,6 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       ...rideRoutes,
       ...paymentRoutes,
       ...accountRoutes,
-      ...adminRoutes,
     ],
   );
 });

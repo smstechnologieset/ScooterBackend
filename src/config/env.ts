@@ -15,6 +15,7 @@ const envSchema = z.object({
   LOG_LEVEL: z.string().default("info"),
   API_HOST: z.string().default("0.0.0.0"),
   API_PORT: z.coerce.number().int().positive().default(3000),
+  CORS_ORIGIN: z.string().default("*"),
   TCP_HOST: z.string().default("0.0.0.0"),
   TCP_PORT: z.coerce.number().int().positive().default(7000),
   DATABASE_URL: z.string().min(1),
@@ -65,6 +66,7 @@ export interface AppConfig {
   api: {
     host: string;
     port: number;
+    corsOrigin: string;
   };
   tcp: {
     host: string;
@@ -84,7 +86,8 @@ export const appConfig: AppConfig = {
   logLevel: env.LOG_LEVEL,
   api: {
     host: env.API_HOST,
-    port: env.API_PORT
+    port: env.API_PORT,
+    corsOrigin: env.CORS_ORIGIN
   },
   tcp: {
     host: env.TCP_HOST,

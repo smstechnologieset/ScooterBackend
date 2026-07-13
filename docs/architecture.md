@@ -12,6 +12,8 @@ This backend is split into five layers:
 
 Fastify is used instead of Express because it integrates cleanly with Pino, supports encapsulated plugins, has lower overhead for high-throughput APIs, and keeps validation/auth/rate-limit concerns explicit per route group.
 
+The rider mobile app and admin dashboard are separate clients. `IsokoApp/` is the rider app only. `admin-web/` is the standalone web dashboard intended for Vercel, using `/admin/*` backend routes and admin JWTs.
+
 `Answers.md` and the protocol documents define the current production profile: raw plain TCP, `G168#MAC#SEQ#LENGTH#CONTENT$` frames, 12-character uppercase hex device IDs, 4-hex sequence values, no checksum, Mode 1 `REGISTER` authentication, and LENGTH measured as `CONTENT` plus `$` bytes. The profile remains configurable in `src/config/env.ts`, but defaults now match the manufacturer answers.
 
 Runtime flow for remote unlock:

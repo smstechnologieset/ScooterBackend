@@ -13,3 +13,7 @@ export class CommandDispatchError extends Error {
 export class UnauthorizedError extends Error {
   public override readonly name = "UnauthorizedError";
 }
+
+export class ForbiddenError extends Error {
+  public override readonly name = "ForbiddenError";
+}

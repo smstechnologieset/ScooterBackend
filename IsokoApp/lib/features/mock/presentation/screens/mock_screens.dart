@@ -953,7 +953,6 @@ class MenuScreen extends StatelessWidget {
                     ],
                   ),
                   const SizedBox(height: 42),
-                  const _MenuItem(Icons.dashboard, 'Admin Dashboard', '/admin'),
                   const _MenuItem(
                       Icons.electric_bike, 'Ride History', '/ride-history'),
                   const _MenuItem(Icons.account_balance_wallet,

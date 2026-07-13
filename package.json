@@ -13,6 +13,7 @@
     "lint": "tsc -p tsconfig.json --noEmit",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate deploy",
+    "admin:token": "tsx scripts/create-admin-token.ts",
     "simulator": "tsx scripts/scooter-simulator.ts"
   },
   "dependencies": {
