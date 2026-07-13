@@ -22,7 +22,7 @@ createServer(async (request, response) => {
   process.stdout.write(`admin-web listening on http://127.0.0.1:${port}\n`);
 });
 
-function contentType(pathname: string): string {
+function contentType(pathname) {
   switch (extname(pathname)) {
     case ".html":
       return "text/html; charset=utf-8";
