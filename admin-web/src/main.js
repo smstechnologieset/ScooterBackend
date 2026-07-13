@@ -168,13 +168,19 @@ async function runAction(scooter, action) {
 }
 
 async function requestJson(path, options) {
+  const headers = {
+    Accept: "application/json",
+    Authorization: `Bearer ${state.token}`
+  };
+
+  if (options.body !== undefined) {
+    headers["Content-Type"] = "application/json";
+  }
+
   const response = await fetch(new URL(path, normalizeBaseUrl(state.apiBaseUrl)), {
     method: options.method,
-    headers: {
-      Accept: "application/json",
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${state.token}`
-    }
+    headers,
+    ...(options.body !== undefined ? { body: JSON.stringify(options.body) } : {})
   });
 
   const bodyText = await response.text();

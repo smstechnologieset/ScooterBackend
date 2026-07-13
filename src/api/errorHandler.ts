@@ -52,6 +52,14 @@ export async function errorHandler(error: FastifyError, _request: FastifyRequest
     return;
   }
 
+  if (typeof error.statusCode === "number" && error.statusCode >= 400 && error.statusCode < 500) {
+    await reply.status(error.statusCode).send({
+      error: error.code?.toLowerCase() ?? "request_error",
+      message: error.message
+    });
+    return;
+  }
+
   _request.log.error({ err: error }, "Unhandled API error");
   await reply.status(500).send({ error: "internal_error", message: "Internal server error." });
 }
