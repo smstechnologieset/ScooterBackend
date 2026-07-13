@@ -118,6 +118,10 @@ connectButton.addEventListener("click", () => refreshFleet());
 
 render();
 
+if (state.token) {
+  void refreshFleet();
+}
+
 async function refreshFleet() {
   if (!state.token) {
     state.error = "Paste an admin token before loading the fleet.";
@@ -133,6 +137,7 @@ async function refreshFleet() {
   try {
     const response = await requestJson(`/admin/fleet?limit=500`, { method: "GET" });
     state.fleet = response;
+    state.notice = `Fleet loaded: ${response.scooters.length} scooter${response.scooters.length === 1 ? "" : "s"}.`;
     if (!state.selectedId) {
       state.selectedId = response.scooters[0]?.id ?? null;
     }
@@ -173,13 +178,26 @@ async function requestJson(path, options) {
   });
 
   const bodyText = await response.text();
-  const body = bodyText ? JSON.parse(bodyText) : {};
+  const body = parseResponseBody(bodyText);
 
   if (!response.ok) {
-    throw new Error(body?.message || "Request failed.");
+    const detail = typeof body === "string" ? body : body?.message;
+    throw new Error(`${response.status} ${response.statusText}${detail ? `: ${detail}` : ""}`);
   }
 
   return body;
+}
+
+function parseResponseBody(bodyText) {
+  if (!bodyText) {
+    return {};
+  }
+
+  try {
+    return JSON.parse(bodyText);
+  } catch {
+    return bodyText.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim().slice(0, 180);
+  }
 }
 
 function render() {
