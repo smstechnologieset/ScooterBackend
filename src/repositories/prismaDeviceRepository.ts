@@ -5,6 +5,17 @@ import { Scooter, ScooterConnectionRecord, TelemetryInput } from "../models/doma
 export class PrismaDeviceRepository implements DeviceRepository {
   public constructor(private readonly prisma: PrismaClient) {}
 
+  public async listScooters(limit = 100): Promise<Scooter[]> {
+    const scooters = await this.prisma.scooter.findMany({
+      take: limit,
+      orderBy: {
+        updatedAt: "desc"
+      }
+    });
+
+    return scooters.map(mapScooter);
+  }
+
   public async findScooterById(id: string): Promise<Scooter | null> {
     const scooter = await this.prisma.scooter.findUnique({ where: { id } });
     return scooter ? mapScooter(scooter) : null;
@@ -98,6 +109,26 @@ export class PrismaDeviceRepository implements DeviceRepository {
     });
   }
 
+  public async recordRegistration(input: {
+    deviceId: string;
+    hardwareVersion?: string;
+    softwareVersion?: string;
+    firmwareVersion?: string;
+    receivedAt: Date;
+  }): Promise<void> {
+    await this.prisma.scooter.updateMany({
+      where: { deviceId: input.deviceId },
+      data: {
+        online: true,
+        authenticationState: "authenticated",
+        updatedAt: input.receivedAt,
+        ...(input.hardwareVersion ? { hardwareVersion: input.hardwareVersion } : {}),
+        ...(input.softwareVersion ? { softwareVersion: input.softwareVersion } : {}),
+        ...(input.firmwareVersion ? { firmwareVersion: input.firmwareVersion } : {})
+      }
+    });
+  }
+
   public async recordHeartbeat(deviceId: string, receivedAt: Date): Promise<void> {
     await this.prisma.scooter.updateMany({
       where: { deviceId },
@@ -109,16 +140,37 @@ export class PrismaDeviceRepository implements DeviceRepository {
   }
 
   public async recordTelemetry(input: TelemetryInput): Promise<void> {
+    const telemetryData = {
+      scooterId: input.scooterId,
+      deviceId: input.deviceId,
+      command: input.command,
+      sequence: input.sequence,
+      payloadFields: input.payloadFields,
+      rawPacket: input.rawPacket,
+      receivedAt: input.receivedAt,
+      ...(input.batteryPercent !== undefined ? { batteryPercent: input.batteryPercent } : {}),
+      ...(input.signalStrength !== undefined ? { signalStrength: input.signalStrength } : {}),
+      ...(input.latitude !== undefined ? { latitude: input.latitude } : {}),
+      ...(input.longitude !== undefined ? { longitude: input.longitude } : {})
+    };
+
     await this.prisma.scooterTelemetry.create({
-      data: {
-        scooterId: input.scooterId,
-        deviceId: input.deviceId,
-        command: input.command,
-        sequence: input.sequence,
-        payloadFields: input.payloadFields,
-        rawPacket: input.rawPacket,
-        receivedAt: input.receivedAt
-      }
+      data: telemetryData
+    });
+
+    const scooterData = {
+      online: true,
+      updatedAt: input.receivedAt,
+      ...(input.batteryPercent !== undefined ? { batteryPercent: input.batteryPercent } : {}),
+      ...(input.signalStrength !== undefined ? { signalStrength: input.signalStrength } : {}),
+      ...(input.lockState !== undefined ? { lockState: input.lockState } : {}),
+      ...(input.latitude !== undefined ? { latitude: input.latitude, lastGpsAt: input.receivedAt } : {}),
+      ...(input.longitude !== undefined ? { longitude: input.longitude } : {})
+    };
+
+    await this.prisma.scooter.updateMany({
+      where: { deviceId: input.deviceId },
+      data: scooterData
     });
   }
 

@@ -6,6 +6,7 @@ import { DeviceService } from "../services/deviceService";
 import { RideService } from "../services/rideService";
 import { registerAuth } from "./auth";
 import { errorHandler } from "./errorHandler";
+import { registerAdminRoutes } from "./routes/admin";
 import { registerScooterRoutes } from "./routes/scooters";
 
 export async function buildApiServer(
@@ -35,6 +36,7 @@ export async function buildApiServer(
   await registerAuth(app, config.jwtSecret);
 
   app.get("/health", async () => ({ ok: true }));
+  await registerAdminRoutes(app, { devices: services.devices });
   await registerScooterRoutes(app, services);
 
   return app;

@@ -2,6 +2,7 @@ import { getCommandSpec } from "./registry";
 import { ProtocolConfigurationError } from "./errors";
 import {
   BuildResult,
+  BuildServerAckInput,
   BuildServerCommandInput,
   LengthMode,
   ParseResult,
@@ -11,17 +12,17 @@ import {
   ProtocolRuntimeConfig
 } from "./types";
 
-const asciiCommandPattern = /^[A-Z0-9_+-]+$/;
+const commandPattern = /^[A-Z0-9_+-]+$/u;
 
 export class ManufacturerProtocolParser {
   public constructor(private readonly config: ProtocolRuntimeConfig) {}
 
   public parse(rawInput: Buffer | string): ParseResult {
     const raw = this.normalizeRaw(rawInput);
-    const ack = this.parseAck(raw);
+    const bareAck = this.parseBareAck(raw);
 
-    if (ack) {
-      return { ok: true, packet: ack };
+    if (bareAck) {
+      return { ok: true, packet: bareAck };
     }
 
     const issues: ProtocolIssue[] = [];
@@ -35,7 +36,7 @@ export class ManufacturerProtocolParser {
         issues: [
           {
             code: "packet.too_few_fields",
-            message: "Manufacturer packet must match the documented base shape G168#DEVICEID#SEQ#LENGTH#COMMAND$.",
+            message: "Manufacturer packet must match ID#MAC#SEQ#LENGTH#CONTENT$.",
             severity: "error"
           }
         ]
@@ -46,8 +47,8 @@ export class ManufacturerProtocolParser {
     const deviceId = parts[1] ?? "";
     const sequence = parts[2] ?? "";
     const lengthText = parts[3] ?? "";
-    const command = parts[4] ?? "";
-    const payloadFields = parts.slice(5);
+    const content = parts.slice(4).join(this.config.fieldSeparator);
+    const parsedContent = this.parseContent(content, issues);
 
     if (version !== this.config.version) {
       issues.push({
@@ -65,41 +66,47 @@ export class ManufacturerProtocolParser {
       });
     }
 
-    if (!sequence) {
+    if (!/^[0-9A-F]{12}$/u.test(deviceId)) {
       issues.push({
-        code: "packet.sequence_missing",
-        message: "Sequence field is empty.",
+        code: "packet.device_id_invalid",
+        message: `Device ID '${deviceId}' must be 12 uppercase hexadecimal characters.`,
+        severity: "error"
+      });
+    }
+
+    if (!/^[0-9A-Fa-f]{4}$/u.test(sequence)) {
+      issues.push({
+        code: "packet.sequence_invalid",
+        message: `Sequence '${sequence}' must be 4 hexadecimal characters.`,
         severity: "error"
       });
     }
 
     const declaredLength = this.parseDeclaredLength(lengthText, issues);
 
-    if (!command || !asciiCommandPattern.test(command)) {
+    if (!parsedContent.command || !commandPattern.test(parsedContent.command)) {
       issues.push({
         code: "packet.command_invalid",
-        message: `Command '${command}' is empty or not ASCII command text.`,
+        message: `Command '${parsedContent.command}' is empty or not ASCII command text.`,
         severity: "error"
       });
     }
 
-    if (!getCommandSpec(command)) {
+    if (parsedContent.command && !getCommandSpec(parsedContent.command)) {
       issues.push({
         code: "packet.command_unknown",
-        message: `Command '${command}' is not in the currently documented command registry. It will be handled as raw telemetry.`,
-        severity: "warning",
-        manufacturerClarificationRequired: true
+        message: `Command '${parsedContent.command}' is not in the documented command registry. It will be handled as raw telemetry.`,
+        severity: "warning"
       });
     }
 
-    this.validateConfiguredLength(packetBody, declaredLength, issues);
+    this.validateConfiguredLength(content, declaredLength, issues);
 
     if (this.config.checksumMode === "unspecified") {
       issues.push({
         code: "packet.checksum_unspecified",
-        message: "Checksum behavior is not configured because the manufacturer checksum rules are not confirmed.",
-        severity: "info",
-        manufacturerClarificationRequired: true
+        message: "Checksum behavior is not configured.",
+        severity: "info"
       });
     }
 
@@ -114,20 +121,22 @@ export class ManufacturerProtocolParser {
       raw,
       version,
       deviceId,
-      sequence,
+      sequence: sequence.toUpperCase(),
       declaredLength,
-      command,
-      payloadFields,
-      duplicateKey: `${deviceId}:${sequence}:${command}`,
+      content,
+      command: parsedContent.command,
+      payloadFields: parsedContent.payloadFields,
+      isAcknowledgement: parsedContent.isAcknowledgement,
+      duplicateKey: `${deviceId}:${sequence.toUpperCase()}:${content}`,
       issues
     };
 
     return { ok: true, packet };
   }
 
-  public buildServerAck(command: string): Buffer {
-    const ack = `${this.config.ackPrefix}${command}${this.config.ackTerminator}`;
-    return Buffer.from(ack, "ascii");
+  public buildServerAck(input: BuildServerAckInput): Buffer {
+    const content = this.buildContent(`ACK^${input.command}`, input.payloadFields ?? [], false);
+    return this.buildFrame(input.deviceId, input.sequence, content);
   }
 
   public buildServerCommand(input: BuildServerCommandInput): BuildResult {
@@ -154,21 +163,14 @@ export class ManufacturerProtocolParser {
     }
 
     const payloadFields = input.payloadFields ?? [];
-    const lengthValue = this.computeOutboundLength(input, payloadFields, this.config.outboundLengthMode);
-    const packetText = [
-      this.config.version,
-      input.deviceId,
-      input.sequence,
-      lengthValue,
-      input.command,
-      ...payloadFields
-    ].join(this.config.fieldSeparator);
-    const framed = `${packetText}${this.config.packetTerminator}`;
+    const content = this.buildContent(input.command, payloadFields, input.includeColonForEmptyPayload ?? false);
+    const packet = this.buildFrame(input.deviceId, input.sequence, content);
+    const expectsAck = input.expectAck ?? this.config.outboundAckMode === "ack-prefix-command";
 
     return {
-      packet: Buffer.from(framed, "ascii"),
+      packet,
       correlationKey: `${input.deviceId}:${input.sequence}:${input.command}`,
-      expectedAckCommand: this.config.outboundAckMode === "ack-prefix-command" ? input.command : null
+      expectedAckCommand: expectsAck ? input.command : null
     };
   }
 
@@ -177,16 +179,17 @@ export class ManufacturerProtocolParser {
     return raw.replace(/[\r\n]+$/u, "");
   }
 
-  private parseAck(raw: string): ParsedProtocolPacket | null {
+  private parseBareAck(raw: string): ParsedProtocolPacket | null {
     if (!raw.startsWith(this.config.ackPrefix)) {
       return null;
     }
 
     const withoutTerminator = this.stripTerminator(raw, this.config.ackTerminator);
-    const command = withoutTerminator.slice(this.config.ackPrefix.length);
+    const content = withoutTerminator.slice(this.config.ackPrefix.length);
+    const command = this.readCommandToken(content);
     const issues: ProtocolIssue[] = [];
 
-    if (!command || !asciiCommandPattern.test(command)) {
+    if (!command || !commandPattern.test(command)) {
       issues.push({
         code: "ack.command_invalid",
         message: `ACK command '${command}' is empty or invalid.`,
@@ -202,6 +205,53 @@ export class ManufacturerProtocolParser {
     };
   }
 
+  private parseContent(
+    content: string,
+    issues: ProtocolIssue[]
+  ): { command: string; payloadFields: string[]; isAcknowledgement: boolean } {
+    const isAcknowledgement = content.startsWith(this.config.ackPrefix);
+    const commandSource = isAcknowledgement ? content.slice(this.config.ackPrefix.length) : content;
+    const command = this.readCommandToken(commandSource);
+
+    if (!command) {
+      return { command, payloadFields: [], isAcknowledgement };
+    }
+
+    const afterCommand = commandSource.slice(command.length);
+    const payloadText = afterCommand.startsWith(":") ? afterCommand.slice(1) : "";
+
+    if (afterCommand && !afterCommand.startsWith(":") && !afterCommand.startsWith(";")) {
+      issues.push({
+        code: "packet.content_separator_unknown",
+        message: `Content '${content}' uses an unexpected command separator.`,
+        severity: "warning"
+      });
+    }
+
+    return {
+      command,
+      payloadFields: this.parsePayloadFields(payloadText),
+      isAcknowledgement
+    };
+  }
+
+  private readCommandToken(value: string): string {
+    const match = /^[A-Z0-9_+-]+/u.exec(value);
+    return match?.[0] ?? "";
+  }
+
+  private parsePayloadFields(payloadText: string): string[] {
+    if (!payloadText) {
+      return [];
+    }
+
+    if (payloadText.includes(";")) {
+      return payloadText.split(";").map((field) => field.trim()).filter(Boolean);
+    }
+
+    return payloadText.split(",").map((field) => field.trim()).filter(Boolean);
+  }
+
   private stripTerminator(value: string, terminator: string): string {
     if (!terminator) {
       return value;
@@ -211,20 +261,20 @@ export class ManufacturerProtocolParser {
   }
 
   private parseDeclaredLength(lengthText: string, issues: ProtocolIssue[]): number | null {
-    if (!/^\d+$/u.test(lengthText)) {
+    if (!/^[0-9A-Fa-f]{4}$/u.test(lengthText)) {
       issues.push({
         code: "packet.length_invalid",
-        message: `Length field '${lengthText}' is not a non-negative integer.`,
+        message: `Length field '${lengthText}' is not a 4-character hexadecimal value.`,
         severity: "error"
       });
       return null;
     }
 
-    return Number.parseInt(lengthText, 10);
+    return Number.parseInt(lengthText, 16);
   }
 
   private validateConfiguredLength(
-    packetBody: string,
+    content: string,
     declaredLength: number | null,
     issues: ProtocolIssue[]
   ): void {
@@ -235,29 +285,45 @@ export class ManufacturerProtocolParser {
     if (this.config.inboundLengthMode === "unspecified") {
       issues.push({
         code: "packet.length_semantics_unspecified",
-        message: "Length field semantics are not configured because the manufacturer definition is not confirmed.",
-        severity: "info",
-        manufacturerClarificationRequired: true
+        message: "Length field semantics are not configured.",
+        severity: "info"
       });
       return;
     }
 
-    const actualLength = this.measureLength(packetBody, this.config.inboundLengthMode);
+    const actualLength = this.measureContentLength(content, this.config.inboundLengthMode);
 
     if (declaredLength !== actualLength) {
       issues.push({
         code: "packet.length_mismatch",
         message: `Declared length ${declaredLength} does not match configured ${this.config.inboundLengthMode} length ${actualLength}.`,
-        severity: "error"
+        severity: "warning"
       });
     }
   }
 
-  private computeOutboundLength(
-    input: BuildServerCommandInput,
-    payloadFields: string[],
-    mode: LengthMode
-  ): string {
+  private buildContent(command: string, payloadFields: string[], includeColonForEmptyPayload: boolean): string {
+    if (payloadFields.length > 0) {
+      return `${command}:${payloadFields.join(",")}`;
+    }
+
+    return includeColonForEmptyPayload ? `${command}:` : command;
+  }
+
+  private buildFrame(deviceId: string, sequence: string, content: string): Buffer {
+    const lengthValue = this.computeLengthText(content, this.config.outboundLengthMode);
+    const packetText = [
+      this.config.version,
+      deviceId,
+      sequence.toUpperCase(),
+      lengthValue,
+      content
+    ].join(this.config.fieldSeparator);
+
+    return Buffer.from(`${packetText}${this.config.packetTerminator}`, "ascii");
+  }
+
+  private computeLengthText(content: string, mode: LengthMode): string {
     if (mode === "literal") {
       if (!this.config.outboundLengthLiteral) {
         throw new ProtocolConfigurationError(
@@ -273,43 +339,39 @@ export class ManufacturerProtocolParser {
       );
     }
 
-    if (mode === "command-and-payload-bytes") {
-      return Buffer.byteLength([input.command, ...payloadFields].join(this.config.fieldSeparator), "ascii").toString();
-    }
-
-    let current = "0";
-
-    for (let attempt = 0; attempt < 4; attempt += 1) {
-      const packetBody = [
-        this.config.version,
-        input.deviceId,
-        input.sequence,
-        current,
-        input.command,
-        ...payloadFields
-      ].join(this.config.fieldSeparator);
-      const next = this.measureLength(packetBody, mode).toString();
-
-      if (next === current) {
-        return current;
-      }
-
-      current = next;
-    }
-
-    return current;
+    return this.formatLength(this.measureContentLength(content, mode));
   }
 
-  private measureLength(packetBody: string, mode: Exclude<LengthMode, "literal" | "unspecified">): number {
+  private measureContentLength(content: string, mode: Exclude<LengthMode, "literal" | "unspecified">): number {
+    if (mode === "content-with-terminator-bytes" || mode === "command-and-payload-bytes") {
+      return protocolByteLength(`${content}${this.config.packetTerminator}`);
+    }
+
     if (mode === "total-bytes") {
-      return Buffer.byteLength(`${packetBody}${this.config.packetTerminator}`, "ascii");
+      const placeholderFrame = [
+        this.config.version,
+        "000000000000",
+        "0000",
+        "0000",
+        content
+      ].join(this.config.fieldSeparator);
+      return protocolByteLength(`${placeholderFrame}${this.config.packetTerminator}`);
     }
 
-    if (mode === "body-bytes") {
-      return Buffer.byteLength(packetBody, "ascii");
-    }
-
-    const parts = packetBody.split(this.config.fieldSeparator);
-    return Buffer.byteLength(parts.slice(4).join(this.config.fieldSeparator), "ascii");
+    return protocolByteLength(content);
   }
+
+  private formatLength(length: number): string {
+    return length.toString(16).toUpperCase().padStart(4, "0");
+  }
+}
+
+function protocolByteLength(value: string): number {
+  let length = 0;
+
+  for (const character of value) {
+    length += character.charCodeAt(0) <= 0x7f ? 1 : 2;
+  }
+
+  return length;
 }

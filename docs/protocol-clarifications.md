@@ -1,23 +1,29 @@
-# Protocol Clarifications Needed
+# Protocol Decisions
 
-The manufacturer TCP document is the source of truth. The current implementation intentionally leaves the following behaviors configurable because they are omitted or ambiguous in the provided instructions and must not be guessed:
+`Answers.md` contains the manufacturer answers used to finish the production backend. The confirmed runtime profile is:
 
-- Exact meaning of the `LENGTH` field in `G168#DEVICEID#SEQ#LENGTH#COMMAND$`.
-- Whether outbound server commands must use the same framing as device uploads.
-- Whether server ACK packets require a terminator such as `$`.
-- Whether the lock acknowledges remote `OPEN` and `LOCK` commands with `ACK^OPEN` and `ACK^LOCK`, another packet, or no packet.
-- Exact checksum algorithm and checksum location, if any.
-- Authentication flow for `AUTHOR` and how it gates later commands.
-- Retry behavior expected by the lock for duplicate sequence numbers.
-- Full field layouts for GPS/positioning, CCID, version, firmware update, voice, and transaction records.
+- Transport: raw, plain TCP. One lock keeps one long-lived connection and reconnects on disconnect.
+- Addressing: the lock can use a public IPv4 address or hostname plus TCP port.
+- Frame: `ID#MAC#SEQ#LENGTH#CONTENT$`.
+- ID: `G168` for this batch.
+- MAC/device ID: 12 uppercase hexadecimal characters.
+- SEQ: 4 hexadecimal characters. Server replies and device command ACKs reuse the same SEQ.
+- LENGTH: hexadecimal byte length of `CONTENT` plus the final `$`. Non-ASCII voice text is measured by encoded bytes.
+- Checksum: none for this protocol profile.
+- Authentication: Mode 1 version registration. Device sends `REGISTER:hw,sw[,firmware]`; server replies `ACK^REGISTER:pubbike`.
+- Heartbeat: `SYNC` is acknowledged with current Unix seconds.
+- Positioning: the general firmware uses `LOCA`; server replies `ACK^LOCA`. `GDATA` is also accepted and acknowledged.
+- Unlock: server sends `OPEN:00,<12-character user id>,<Unix seconds>` and waits 25 seconds for `ACK^OPEN`.
+- Lock: server sends `LOCK:00` and waits for `ACK^LOCK`.
+- Records: non-empty `RECORD` uploads must be acknowledged as `ACK^RECORD:unlockTimestamp,userId,recordStatus`. Empty `RECORD:1` uploads must not be acknowledged.
+- Duplicates: duplicate non-empty uploads are ACKed again so a lost server ACK does not cause the lock to keep retrying without a response.
+- CCID: `CCID:<value>` must be acknowledged as `ACK^CCID:<same value>`.
+- Required optional commands for this launch: `UPDATE:00` and server-initiated `RECORD:` read requests.
 
-Configure these in `.env` once the manufacturer confirms them:
+The implementation keeps protocol options configurable in `.env`, but `.env.example` and `src/config/env.ts` now default to this confirmed profile.
 
-- `PROTOCOL_INBOUND_LENGTH_MODE`
-- `PROTOCOL_OUTBOUND_LENGTH_MODE`
-- `PROTOCOL_OUTBOUND_LENGTH_LITERAL`
-- `PROTOCOL_CHECKSUM_MODE`
-- `PROTOCOL_ACK_TERMINATOR`
-- `PROTOCOL_OUTBOUND_ACK_MODE`
-- `PROTOCOL_DUPLICATE_PACKET_MODE`
-- `PROTOCOL_AUTH_FLOW`
+Known caveats:
+
+- The manufacturer's examples contain inconsistent LENGTH fields for some packets. Outbound packets use the confirmed content-plus-terminator rule; inbound mismatches are logged as warnings instead of rejected.
+- `VOICE` remains listed in the command registry, but GBK payload construction is not exposed through REST yet.
+- Mode 2/Mode 3 `AUTHOR` key-table authentication is not used by this lock batch.

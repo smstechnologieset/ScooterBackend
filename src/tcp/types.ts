@@ -16,6 +16,7 @@ export interface SocketContext {
 
 export interface SendServerCommandInput {
   deviceId: string;
+  sequence: string;
   packet: Buffer;
   expectedAckCommand: string | null;
   commandTimeoutMs: number;
@@ -26,6 +27,7 @@ export interface SendServerCommandInput {
 
 export interface PendingCommand {
   deviceId: string;
+  sequence: string;
   expectedAckCommand: string;
   packet: Buffer;
   attempts: number;

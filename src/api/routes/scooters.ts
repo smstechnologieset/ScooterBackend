@@ -18,7 +18,7 @@ export async function registerScooterRoutes(
 ): Promise<void> {
   app.post("/scooters/:id/unlock", { preHandler: app.authenticate }, async (request, reply) => {
     const params = scooterParamsSchema.parse(request.params);
-    const command = await services.commands.unlockScooter(params.id);
+    const command = await services.commands.unlockScooter(params.id, request.user.sub);
     await reply.send({ command });
   });
 
@@ -26,6 +26,24 @@ export async function registerScooterRoutes(
     const params = scooterParamsSchema.parse(request.params);
     const command = await services.commands.lockScooter(params.id);
     await reply.send({ command });
+  });
+
+  app.post("/scooters/:id/records/read", { preHandler: app.authenticate }, async (request, reply) => {
+    const params = scooterParamsSchema.parse(request.params);
+    const command = await services.commands.requestRecords(params.id);
+    await reply.status(202).send({ command });
+  });
+
+  app.post("/scooters/:id/ccid/request", { preHandler: app.authenticate }, async (request, reply) => {
+    const params = scooterParamsSchema.parse(request.params);
+    const command = await services.commands.requestCcid(params.id);
+    await reply.status(202).send({ command });
+  });
+
+  app.post("/scooters/:id/update", { preHandler: app.authenticate }, async (request, reply) => {
+    const params = scooterParamsSchema.parse(request.params);
+    const command = await services.commands.updateFirmware(params.id);
+    await reply.status(202).send({ command });
   });
 
   app.get("/scooters/:id/status", { preHandler: app.authenticate }, async (request, reply) => {

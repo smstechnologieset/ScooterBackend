@@ -4,6 +4,7 @@ import { DeviceRepository } from "../repositories/deviceRepository";
 import { ManufacturerProtocolParser } from "../protocol/parser";
 import { ProtocolConfigurationError } from "../protocol/errors";
 import { CommandRecord, CommandType } from "../models/domain";
+import { DocumentedCommandToken } from "../protocol/types";
 import { OfflineScooterError, NotFoundError } from "../utils/errors";
 import { ProtocolSequenceGenerator } from "../utils/sequence";
 import { TcpSocketManager } from "../tcp/socketManager";
@@ -18,15 +19,54 @@ export class CommandDispatcher {
     private readonly sequenceGenerator: ProtocolSequenceGenerator
   ) {}
 
-  public async unlockScooter(scooterId: string): Promise<CommandRecord> {
-    return this.dispatch(scooterId, "OPEN");
+  public async unlockScooter(scooterId: string, userId?: string): Promise<CommandRecord> {
+    const timestamp = Math.floor(Date.now() / 1000).toString();
+    return this.dispatch(scooterId, {
+      type: "OPEN",
+      payloadFields: ["00", formatProtocolUserId(userId ?? scooterId), timestamp]
+    });
   }
 
   public async lockScooter(scooterId: string): Promise<CommandRecord> {
-    return this.dispatch(scooterId, "LOCK");
+    return this.dispatch(scooterId, {
+      type: "LOCK",
+      payloadFields: ["00"]
+    });
   }
 
-  private async dispatch(scooterId: string, type: Extract<CommandType, "OPEN" | "LOCK">): Promise<CommandRecord> {
+  public async requestRecords(scooterId: string): Promise<CommandRecord> {
+    return this.dispatch(scooterId, {
+      type: "RECORD",
+      payloadFields: [],
+      includeColonForEmptyPayload: true,
+      expectAck: false
+    });
+  }
+
+  public async requestCcid(scooterId: string): Promise<CommandRecord> {
+    return this.dispatch(scooterId, {
+      type: "APPLY",
+      payloadFields: ["03"],
+      expectAck: false
+    });
+  }
+
+  public async updateFirmware(scooterId: string): Promise<CommandRecord> {
+    return this.dispatch(scooterId, {
+      type: "UPDATE",
+      payloadFields: ["00"]
+    });
+  }
+
+  private async dispatch(
+    scooterId: string,
+    input: {
+      type: Extract<CommandType, DocumentedCommandToken>;
+      payloadFields: string[];
+      includeColonForEmptyPayload?: boolean;
+      expectAck?: boolean;
+    }
+  ): Promise<CommandRecord> {
     const scooter = await this.devices.findScooterById(scooterId);
 
     if (!scooter) {
@@ -41,22 +81,30 @@ export class CommandDispatcher {
     const command = await this.commands.create({
       scooterId: scooter.id,
       deviceId: scooter.deviceId,
-      type,
+      type: input.type,
       sequence,
       payload: {
-        source: "api"
+        source: "api",
+        fields: input.payloadFields
       }
     });
 
     try {
-      const buildResult = this.parser.buildServerCommand({
+      const buildInput = {
         deviceId: scooter.deviceId,
         sequence,
-        command: type
-      });
+        command: input.type,
+        payloadFields: input.payloadFields,
+        ...(input.includeColonForEmptyPayload !== undefined
+          ? { includeColonForEmptyPayload: input.includeColonForEmptyPayload }
+          : {}),
+        ...(input.expectAck !== undefined ? { expectAck: input.expectAck } : {})
+      };
+      const buildResult = this.parser.buildServerCommand(buildInput);
 
       await this.sockets.sendServerCommand({
         deviceId: scooter.deviceId,
+        sequence,
         packet: buildResult.packet,
         expectedAckCommand: buildResult.expectedAckCommand,
         commandTimeoutMs: this.config.tcp.commandTimeoutMs,
@@ -89,4 +137,14 @@ export class CommandDispatcher {
       throw error;
     }
   }
+}
+
+function formatProtocolUserId(value: string): string {
+  const normalized = value.replace(/[^0-9A-Za-z]/gu, "").toUpperCase();
+
+  if (normalized.length >= 12) {
+    return normalized.slice(0, 12);
+  }
+
+  return normalized.padStart(12, "0");
 }

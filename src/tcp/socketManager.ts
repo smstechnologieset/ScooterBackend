@@ -130,7 +130,7 @@ export class TcpSocketManager implements SocketManagerPort {
       return;
     }
 
-    const ackKey = this.ackKey(input.deviceId, input.expectedAckCommand);
+    const ackKey = this.ackKey(input.deviceId, input.sequence, input.expectedAckCommand);
 
     if (this.pendingAcks.has(ackKey)) {
       throw new Error(`A command is already waiting for ACK '${ackKey}'.`);
@@ -139,6 +139,7 @@ export class TcpSocketManager implements SocketManagerPort {
     await new Promise<void>((resolve, reject) => {
       const pending: PendingCommand = {
         deviceId: input.deviceId,
+        sequence: input.sequence,
         expectedAckCommand: input.expectedAckCommand ?? "",
         packet: input.packet,
         attempts: 0,
@@ -156,12 +157,18 @@ export class TcpSocketManager implements SocketManagerPort {
     });
   }
 
-  public completeAck(deviceId: string, command: string): void {
-    const key = this.ackKey(deviceId, command);
+  public completeAck(deviceId: string, sequence: string | null, command: string): void {
+    const key = sequence ? this.ackKey(deviceId, sequence, command) : this.findPendingAckKey(deviceId, command);
+
+    if (!key) {
+      this.logger.info({ deviceId, sequence, command }, "Received ACK without pending command");
+      return;
+    }
+
     const pending = this.pendingAcks.get(key);
 
     if (!pending) {
-      this.logger.info({ deviceId, command }, "Received ACK without pending command");
+      this.logger.info({ deviceId, sequence, command }, "Received ACK without pending command");
       return;
     }
 
@@ -236,7 +243,7 @@ export class TcpSocketManager implements SocketManagerPort {
         return;
       }
 
-      this.completeAck(context.deviceId, result.packet.command);
+      this.completeAck(context.deviceId, null, result.packet.command);
       return;
     }
 
@@ -332,8 +339,18 @@ export class TcpSocketManager implements SocketManagerPort {
     this.logger.info({ socketId: context.socketId, deviceId: context.deviceId, reason }, "Scooter TCP connection removed");
   }
 
-  private ackKey(deviceId: string, command: string): string {
-    return `${deviceId}:${command}`;
+  private ackKey(deviceId: string, sequence: string, command: string): string {
+    return `${deviceId}:${sequence}:${command}`;
+  }
+
+  private findPendingAckKey(deviceId: string, command: string): string | null {
+    for (const [key, pending] of this.pendingAcks) {
+      if (pending.deviceId === deviceId && pending.expectedAckCommand === command) {
+        return key;
+      }
+    }
+
+    return null;
   }
 }
 

@@ -1,35 +1,11 @@
 # Protocol Source Notes
 
-Authoritative inputs provided for this scaffold:
+Authoritative inputs used by this backend:
 
-- `SmartLock-IOT(V1.3).pdf`
-- `智响智能锁通讯协议英文版.pdf`
-- Project instruction attachment in `.codex/attachments/.../pasted-text.txt`
+- `Answers.md`: manufacturer answers for the exact hardware and firmware batch.
+- `SmartLock-IOT_V1_3_.md`: English protocol document.
+- `智响智能锁通讯协议英文版.md`: manufacturer protocol document.
 
-The IoT PDF table of contents is extractable and lists these TCP-related sections:
+The original scaffold treated several protocol details as unknown. The manufacturer has now confirmed the production profile documented in `docs/protocol-clarifications.md`, including raw TCP transport, Mode 1 registration, 4-hex SEQ values, content-plus-terminator LENGTH calculation, `LOCA` positioning, `CCID` echo ACKs, non-empty `RECORD` ACKs, no ACK for empty `RECORD:1`, 25-second OPEN timeout, and required `UPDATE` plus server `RECORD:` support.
 
-- Protocol format
-- Positioning package
-- Heartbeat packet for 4G-LTE long connections
-- Search/inquire vehicle
-- Unlock for 4G-LTE long connections
-- Close and lock
-- Transaction record
-- Heartbeat upload interval setting
-- Lock positioning upload interval setting
-- Cycling positioning upload interval setting
-- Remote firmware update protocol
-- SIM CCID reporting
-- Version reporting
-- Voice command modification
-- Bluetooth connection authentication
-- Error codes
-
-The body text uses custom PDF font encodings, so the local extraction pass could not recover field tables reliably without a dedicated parser/OCR workflow. The implementation therefore encodes only the protocol details included in the project instructions:
-
-- ASCII text packet family.
-- Base example shape: `G168#DEVICEID#SEQ#LENGTH#COMMAND$`.
-- Server ACK prefix examples: `ACK^REGISTER`, `ACK^SYNC`, `ACK^OPEN`, `ACK^LOCK`.
-- Command tokens listed in the instructions: `REGISTER`, `SYNC`, `OPEN`, `LOCK`, `UPDATE`, `VOICE`, `CCID`, `AUTHOR`.
-
-All omitted or ambiguous behavior remains configurable in `.env.example` and is listed in `docs/protocol-clarifications.md`.
+The code still accepts documented packets whose example LENGTH values disagree with the confirmed rule. Those mismatches are recorded as warnings because the docs and sample packets are inconsistent, while outbound packets are generated with the confirmed LENGTH calculation.

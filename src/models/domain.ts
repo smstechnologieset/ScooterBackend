@@ -3,7 +3,18 @@ export type LockState = "unknown" | "locked" | "unlocked";
 export type RideState = "idle" | "reserved" | "in_ride" | "maintenance";
 export type AuthenticationState = "unknown" | "unauthenticated" | "authenticated" | "failed";
 export type CommandStatus = "queued" | "sent" | "acknowledged" | "timed_out" | "failed";
-export type CommandType = "OPEN" | "LOCK" | "UPDATE" | "VOICE" | "AUTHOR";
+export type CommandType =
+  | "OPEN"
+  | "LOCK"
+  | "RECORD"
+  | "APPLY"
+  | "UPDATE"
+  | "VOICE"
+  | "AUTHOR"
+  | "STOR"
+  | "INTERSYNC"
+  | "INTERARMLOC"
+  | "SETRIDELOC";
 
 export interface Scooter {
   id: string;
@@ -58,4 +69,9 @@ export interface TelemetryInput {
   payloadFields: string[];
   rawPacket: string;
   receivedAt: Date;
+  batteryPercent?: number;
+  signalStrength?: number;
+  lockState?: LockState;
+  latitude?: number;
+  longitude?: number;
 }

@@ -1,12 +1,20 @@
 export const documentedCommandTokens = [
   "REGISTER",
   "SYNC",
+  "LOCA",
+  "GDATA",
+  "APPLY",
   "OPEN",
   "LOCK",
+  "RECORD",
   "UPDATE",
   "VOICE",
   "CCID",
-  "AUTHOR"
+  "AUTHOR",
+  "STOR",
+  "INTERSYNC",
+  "INTERARMLOC",
+  "SETRIDELOC"
 ] as const;
 
 export type DocumentedCommandToken = (typeof documentedCommandTokens)[number];
@@ -18,6 +26,7 @@ export type LengthMode =
   | "total-bytes"
   | "body-bytes"
   | "command-and-payload-bytes"
+  | "content-with-terminator-bytes"
   | "literal";
 
 export type ChecksumMode = "unspecified" | "none" | "trailing-field";
@@ -28,7 +37,7 @@ export type OutboundAckMode = "unspecified" | "ack-prefix-command" | "none";
 
 export type DuplicatePacketMode = "record-only" | "ack-again" | "drop";
 
-export type AuthFlowMode = "unspecified" | "author-command" | "disabled";
+export type AuthFlowMode = "unspecified" | "register-version" | "author-command" | "disabled";
 
 export interface ProtocolRuntimeConfig {
   version: string;
@@ -44,6 +53,7 @@ export interface ProtocolRuntimeConfig {
   outboundAckMode: OutboundAckMode;
   duplicatePacketMode: DuplicatePacketMode;
   authFlow: AuthFlowMode;
+  registerAckPayload: string;
   maxFrameBytes: number;
 }
 
@@ -75,8 +85,10 @@ export interface ParsedManufacturerPacket {
   deviceId: string;
   sequence: string;
   declaredLength: number | null;
+  content: string;
   command: string;
   payloadFields: string[];
+  isAcknowledgement: boolean;
   duplicateKey: string;
   issues: ProtocolIssue[];
 }
@@ -107,6 +119,15 @@ export interface BuildServerCommandInput {
   deviceId: string;
   sequence: string;
   command: DocumentedCommandToken;
+  payloadFields?: string[];
+  includeColonForEmptyPayload?: boolean;
+  expectAck?: boolean;
+}
+
+export interface BuildServerAckInput {
+  deviceId: string;
+  sequence: string;
+  command: string;
   payloadFields?: string[];
 }
 
