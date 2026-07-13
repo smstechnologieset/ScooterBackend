@@ -3,6 +3,7 @@
 This backend is split into five layers:
 
 1. `api`: Fastify REST API for mobile and admin clients.
+
 2. `tcp`: Node `net` TCP listener, socket lifecycle management, heartbeat cleanup, and outbound command delivery.
 3. `protocol`: manufacturer packet framing, parsing, ACK construction, command packet building, and runtime protocol policy.
 4. `services`: ride/device/command orchestration independent of HTTP and raw sockets.
