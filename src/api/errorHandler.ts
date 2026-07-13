@@ -1,6 +1,12 @@
 import { FastifyError, FastifyReply, FastifyRequest } from "fastify";
 import { ProtocolConfigurationError } from "../protocol/errors";
-import { ForbiddenError, NotFoundError, OfflineScooterError, UnauthorizedError } from "../utils/errors";
+import {
+  CommandDispatchError,
+  ForbiddenError,
+  NotFoundError,
+  OfflineScooterError,
+  UnauthorizedError
+} from "../utils/errors";
 
 export async function errorHandler(error: FastifyError, _request: FastifyRequest, reply: FastifyReply): Promise<void> {
   if (error instanceof NotFoundError) {
@@ -22,6 +28,15 @@ export async function errorHandler(error: FastifyError, _request: FastifyRequest
     return;
   }
 
+  if (error instanceof CommandDispatchError) {
+    const timedOut = error.message.toLowerCase().includes("timed out");
+    await reply.status(timedOut ? 504 : 502).send({
+      error: timedOut ? "command_ack_timeout" : "command_dispatch_failed",
+      message: error.message
+    });
+    return;
+  }
+
   if (error instanceof UnauthorizedError || error.statusCode === 401) {
     await reply.status(401).send({ error: "unauthorized", message: "Authentication required." });
     return;
@@ -37,5 +52,6 @@ export async function errorHandler(error: FastifyError, _request: FastifyRequest
     return;
   }
 
+  _request.log.error({ err: error }, "Unhandled API error");
   await reply.status(500).send({ error: "internal_error", message: "Internal server error." });
 }

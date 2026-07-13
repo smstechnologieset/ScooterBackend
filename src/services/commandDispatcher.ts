@@ -5,7 +5,7 @@ import { ManufacturerProtocolParser } from "../protocol/parser";
 import { ProtocolConfigurationError } from "../protocol/errors";
 import { CommandRecord, CommandType } from "../models/domain";
 import { DocumentedCommandToken } from "../protocol/types";
-import { OfflineScooterError, NotFoundError } from "../utils/errors";
+import { CommandDispatchError, OfflineScooterError, NotFoundError } from "../utils/errors";
 import { ProtocolSequenceGenerator } from "../utils/sequence";
 import { TcpSocketManager } from "../tcp/socketManager";
 
@@ -134,7 +134,7 @@ export class CommandDispatcher {
         throw error;
       }
 
-      throw error;
+      throw new CommandDispatchError(message);
     }
   }
 }
