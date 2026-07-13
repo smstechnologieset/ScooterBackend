@@ -9,6 +9,7 @@ This backend is split into five layers:
 4. `services`: ride/device/command orchestration independent of HTTP and raw sockets.
 5. `repositories`: persistence interfaces plus Prisma implementations.
 
+
 Fastify is used instead of Express because it integrates cleanly with Pino, supports encapsulated plugins, has lower overhead for high-throughput APIs, and keeps validation/auth/rate-limit concerns explicit per route group.
 
 `Answers.md` and the protocol documents define the current production profile: raw plain TCP, `G168#MAC#SEQ#LENGTH#CONTENT$` frames, 12-character uppercase hex device IDs, 4-hex sequence values, no checksum, Mode 1 `REGISTER` authentication, and LENGTH measured as `CONTENT` plus `$` bytes. The profile remains configurable in `src/config/env.ts`, but defaults now match the manufacturer answers.
