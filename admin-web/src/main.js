@@ -21,13 +21,13 @@ root.innerHTML = `
   <main class="shell">
     <header class="topbar">
       <div class="brand">
-        <div class="brand-mark">IS</div>
+        <div class="brand-mark"><img src="/src/assets/logo.png" alt="ISOKO" /></div>
         <div>
           <h1>ISOKO Admin</h1>
-          <p>Fleet operations</p>
+          <p>Fleet operations console</p>
         </div>
       </div>
-      <button class="icon-button" id="refresh-button" type="button" title="Refresh fleet">↻</button>
+      <button class="icon-button" id="refresh-button" type="button" title="Refresh fleet">&#8635;</button>
     </header>
 
     <section class="connection-panel">
@@ -48,7 +48,7 @@ root.innerHTML = `
 
     <section class="controls">
       <div class="search">
-        <span>⌕</span>
+        <span>&#8981;</span>
         <input id="query-input" placeholder="Search device ID" />
       </div>
       <div class="segments" aria-label="Fleet filter">
@@ -245,7 +245,7 @@ function metricCards(metrics) {
 function metricCard(label, value, caption) {
   return `
     <article class="metric">
-      <div class="metric-icon">●</div>
+      <div class="metric-icon">&#9679;</div>
       <div>
         <span>${escapeHtml(label)}</span>
         <strong>${value}</strong>
@@ -317,7 +317,7 @@ function eventsHtml(events) {
     .map(
       (event) => `
         <article class="event ${event.severity}">
-          <div>•</div>
+          <div>&#9679;</div>
           <div>
             <strong>${escapeHtml(event.title)}</strong>
             <p>${escapeHtml(event.detail)}</p>
@@ -332,7 +332,7 @@ function eventsHtml(events) {
 function identityHtml(scooter) {
   return `
     <div class="identity">
-      <div>■</div>
+      <div></div>
       <div>
         <strong>${escapeHtml(displayCode(scooter))}</strong>
         <span>${escapeHtml(scooter.deviceId)}</span>
@@ -375,7 +375,7 @@ function actionButtons(scooter, expanded) {
             <button type="button" data-action="${action}" data-scooter="${scooter.id}" title="${labelText}" ${
             state.actionBusy ? "disabled" : ""
           }>
-              ${expanded ? escapeHtml(labelText) : labelText[0]}
+              ${escapeHtml(labelText)}
             </button>
           `
         )
