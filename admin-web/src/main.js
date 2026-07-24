@@ -1,6 +1,7 @@
 const tokenStorageKey = "isoko-admin-token";
 const apiStorageKey = "isoko-admin-api-base-url";
 const defaultApiBaseUrl = window.__ISOKO_ADMIN_CONFIG__?.apiBaseUrl ?? "http://localhost:3000";
+const lowBatteryThresholdPercent = 25;
 
 const state = {
   apiBaseUrl: localStorage.getItem(apiStorageKey) ?? defaultApiBaseUrl,
@@ -304,7 +305,7 @@ function detailsHtml(scooter) {
       <dt>Lock</dt><dd>${lockLabel(scooter.lockState)}</dd>
       <dt>Ride</dt><dd>${rideLabel(scooter.rideState)}</dd>
       <dt>Battery</dt><dd>${batteryLabel(scooter)}</dd>
-      <dt>Signal</dt><dd>${scooter.signalStrength ?? "--"}%</dd>
+      <dt>Signal</dt><dd>${signalLabel(scooter)}</dd>
       <dt>CCID</dt><dd>${escapeHtml(scooter.simCcid ?? "--")}</dd>
       <dt>GPS</dt><dd>${gpsLabel(scooter)}</dd>
     </dl>
@@ -413,7 +414,7 @@ function buildEvents(scooters) {
         createdAt: scooter.lastHeartbeatAt
       });
     }
-    if ((scooter.batteryPercent ?? 100) <= 20) {
+    if ((scooter.batteryPercent ?? 100) < lowBatteryThresholdPercent) {
       events.push({
         id: `${scooter.id}:battery`,
         title: "Low battery",
@@ -459,7 +460,11 @@ function filterScooters(scooters, query, filter) {
 }
 
 function scooterNeedsAttention(scooter) {
-  return scooter.status === "offline" || scooter.lockState === "unlocked" || (scooter.batteryPercent ?? 100) <= 20;
+  return (
+    scooter.status === "offline" ||
+    scooter.lockState === "unlocked" ||
+    (scooter.batteryPercent ?? 100) < lowBatteryThresholdPercent
+  );
 }
 
 function emptyMetrics() {
@@ -489,6 +494,10 @@ function displayCode(scooter) {
 
 function batteryLabel(scooter) {
   return scooter.batteryPercent == null ? "--" : `${scooter.batteryPercent}%`;
+}
+
+function signalLabel(scooter) {
+  return scooter.signalStrength == null ? "--" : String(scooter.signalStrength);
 }
 
 function lockLabel(value) {

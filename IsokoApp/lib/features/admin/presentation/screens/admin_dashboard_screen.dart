@@ -1199,7 +1199,7 @@ Color _batteryColor(int? batteryPercent) {
     return AppTheme.textMuted;
   }
 
-  if (batteryPercent <= 20) {
+  if (batteryPercent < 25) {
     return AppTheme.danger;
   }
 

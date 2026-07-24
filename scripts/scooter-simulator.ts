@@ -42,6 +42,10 @@ socket.on("data", (chunk) => {
   if (text.includes("LOCK")) {
     socket.write(packet("ACK^LOCK:00,1,0,0", sequenceFromPacket(text)));
   }
+
+  if (text.includes("UPDATE")) {
+    socket.write(packet("ACK^UPDATE:00", sequenceFromPacket(text)));
+  }
 });
 
 socket.on("close", () => {

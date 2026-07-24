@@ -184,7 +184,7 @@ class AdminFleetMetrics {
         .length;
     final lowBattery = scooters
         .where((scooter) =>
-            scooter.batteryPercent != null && scooter.batteryPercent! <= 20)
+            scooter.batteryPercent != null && scooter.batteryPercent! < 25)
         .length;
 
     return AdminFleetMetrics(
@@ -236,12 +236,12 @@ class AdminScooter {
   final DateTime? updatedAt;
 
   bool get isOnline => status == AdminConnectionStatus.online;
-  bool get isLowBattery => batteryPercent != null && batteryPercent! <= 20;
+  bool get isLowBattery => batteryPercent != null && batteryPercent! < 25;
   bool get requiresAttention =>
       !isOnline || isLowBattery || lockState == AdminLockState.unlocked;
 
   String get batteryLabel => batteryPercent == null ? '--' : '$batteryPercent%';
-  String get signalLabel => signalStrength == null ? '--' : '$signalStrength%';
+  String get signalLabel => signalStrength == null ? '--' : '$signalStrength';
 
   factory AdminScooter.fromJson(Map<String, Object?> json) {
     final deviceId = _stringFromJson(json['deviceId']) ??

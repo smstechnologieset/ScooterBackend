@@ -186,11 +186,13 @@ function extractTelemetry(packet: ParsedManufacturerPacket): {
     (packet.command === "RECORD" ? lockStateFromCode(fields[0]) : undefined) ??
     (statusField ? lockStateFromStatus(statusField) : undefined);
   const batteryPercent = statusField ? batteryPercentFromStatus(statusField) : undefined;
+  const signalStrength = statusField ? signalStrengthFromStatus(statusField) : undefined;
   const gps = gdataField ? gpsFromGdata(gdataField) : {};
 
   return {
     ...(lockState ? { lockState } : {}),
     ...(batteryPercent !== undefined ? { batteryPercent } : {}),
+    ...(signalStrength !== undefined ? { signalStrength } : {}),
     ...gps
   };
 }
@@ -242,13 +244,25 @@ function lockStateFromCode(raw: string | undefined): "unknown" | "locked" | "unl
 
 function batteryPercentFromStatus(statusField: string): number | undefined {
   const values = statusField.replace(/^STATUS:/u, "").split(",");
-  const raw = Number.parseInt(values[2] ?? "", 10);
+  const batteryVoltage = Number.parseInt(values[0] ?? "", 10);
 
-  if (!Number.isFinite(raw)) {
+  if (!Number.isFinite(batteryVoltage)) {
     return undefined;
   }
 
-  return Math.max(0, Math.min(100, raw));
+  const batteryFraction =
+    batteryVoltage >= 365
+      ? ((batteryVoltage - 365) * 0.8) / 45 + 0.2
+      : ((batteryVoltage - 340) * 0.2) / 25;
+
+  return Math.max(0, Math.min(100, Math.round(batteryFraction * 100)));
+}
+
+function signalStrengthFromStatus(statusField: string): number | undefined {
+  const values = statusField.replace(/^STATUS:/u, "").split(",");
+  const signalStrength = Number.parseInt(values[2] ?? "", 10);
+
+  return Number.isFinite(signalStrength) ? signalStrength : undefined;
 }
 
 function gpsFromGdata(gdataField: string): { latitude?: number; longitude?: number } {

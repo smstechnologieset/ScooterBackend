@@ -2,6 +2,8 @@ import { DeviceRepository } from "../repositories/deviceRepository";
 import { Scooter } from "../models/domain";
 import { NotFoundError } from "../utils/errors";
 
+const lowBatteryThresholdPercent = 25;
+
 export interface FleetMetrics {
   total: number;
   online: number;
@@ -61,7 +63,7 @@ function buildFleetMetrics(scooters: Scooter[]): FleetMetrics {
   const online = scooters.filter((scooter) => scooter.status === "online").length;
   const unlocked = scooters.filter((scooter) => scooter.lockState === "unlocked").length;
   const lowBattery = scooters.filter(
-    (scooter) => scooter.batteryPercent !== null && scooter.batteryPercent <= 20
+    (scooter) => scooter.batteryPercent !== null && scooter.batteryPercent < lowBatteryThresholdPercent
   ).length;
 
   return {

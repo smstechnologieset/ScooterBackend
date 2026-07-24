@@ -98,6 +98,29 @@ describe("ProtocolRouter", () => {
     ]);
     expect(harness.devices.telemetryInputs[0]?.lockState).toBe("unlocked");
   });
+
+  it.each([
+    ["320", 0],
+    ["340", 0],
+    ["364", 19],
+    ["365", 20],
+    ["376", 40],
+    ["388", 61],
+    ["410", 100],
+    ["420", 100]
+  ])("converts battery voltage %s to %d percent and extracts raw signal", async (batteryVoltage, expectedPercent) => {
+    const harness = createHarness();
+
+    await harness.handle(
+      `G168#EE6E8C646034#0001#0000#SYNC:000;STATUS:${batteryVoltage},500,25,1,0$`
+    );
+
+    expect(harness.devices.telemetryInputs[0]).toMatchObject({
+      batteryPercent: expectedPercent,
+      signalStrength: 25,
+      lockState: "locked"
+    });
+  });
 });
 
 function createHarness(configOverrides: Partial<ProtocolRuntimeConfig> = {}): {
