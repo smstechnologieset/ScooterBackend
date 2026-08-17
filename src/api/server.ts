@@ -4,6 +4,7 @@ import { AppConfig } from "../config/env";
 import { CommandDispatcher } from "../services/commandDispatcher";
 import { DeviceService } from "../services/deviceService";
 import { RideService } from "../services/rideService";
+import { RiderIdentityVerifier } from "../services/riderIdentityVerifier";
 import { registerAuth } from "./auth";
 import { errorHandler } from "./errorHandler";
 import { registerAdminRoutes } from "./routes/admin";
@@ -15,6 +16,7 @@ export async function buildApiServer(
     commands: CommandDispatcher;
     devices: DeviceService;
     rides: RideService;
+    riderIdentityVerifier: RiderIdentityVerifier;
   }
 ): Promise<FastifyInstance> {
   const app = Fastify({
@@ -40,7 +42,7 @@ export async function buildApiServer(
     max: 120,
     timeWindow: "1 minute"
   });
-  await registerAuth(app, config.jwtSecret);
+  await registerAuth(app, config.jwtSecret, services.riderIdentityVerifier);
 
   app.get("/health", async () => ({ ok: true }));
   await registerAdminRoutes(app, { commands: services.commands, devices: services.devices });

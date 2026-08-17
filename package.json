@@ -14,6 +14,7 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate deploy",
     "admin:token": "tsx scripts/create-admin-token.ts",
+    "mobile:env": "node scripts/create-flutter-env.mjs",
     "simulator": "tsx scripts/scooter-simulator.ts"
   },
   "dependencies": {

@@ -1,7 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/app_theme.dart';
+import '../../../account/data/providers.dart';
+import '../../../account/presentation/widgets/profile_avatar.dart';
+import '../../../auth/data/auth_repository.dart';
+import '../../../auth/data/providers.dart';
 import '../../../auth/presentation/widgets/isoko_logo.dart';
 
 const _green = AppTheme.primaryGreen;
@@ -919,11 +924,19 @@ class _RateRideScreenState extends State<RateRideScreen> {
   }
 }
 
-class MenuScreen extends StatelessWidget {
+class MenuScreen extends ConsumerWidget {
   const MenuScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final profile = ref.watch(currentProfileProvider);
+    final displayName = profile?.displayName ?? 'ISOKO Rider';
+    final avatarUrl = ref.watch(currentAvatarUrlProvider).when(
+          data: (value) => value,
+          error: (error, stackTrace) => null,
+          loading: () => null,
+        );
+
     return _MapScaffold(
       showLogo: false,
       child: Align(
@@ -938,19 +951,54 @@ class MenuScreen extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    children: [
-                      const CircleAvatar(
-                          radius: 34,
-                          backgroundColor: _green,
-                          child: Icon(Icons.person, size: 42)),
-                      const SizedBox(width: 18),
-                      const Expanded(child: _Title('John Doe')),
-                      IconButton(
-                          onPressed: () => context.go('/find-scooter'),
-                          icon: const Icon(Icons.chevron_right,
-                              color: Colors.white)),
-                    ],
+                  Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(8),
+                      onTap: () => context.push('/profile'),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 4),
+                        child: Row(
+                          children: [
+                            ProfileAvatar(
+                              displayName: displayName,
+                              imageUrl: avatarUrl,
+                              size: 68,
+                            ),
+                            const SizedBox(width: 18),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    displayName,
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style:
+                                        Theme.of(context).textTheme.titleLarge,
+                                  ),
+                                  if (profile?.email != null) ...[
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      profile!.email!,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .bodyMedium,
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ),
+                            const Icon(
+                              Icons.chevron_right,
+                              color: Colors.white,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
                   ),
                   const SizedBox(height: 42),
                   const _MenuItem(
@@ -1053,11 +1101,11 @@ class TransactionsScreen extends StatelessWidget {
   }
 }
 
-class SettingsScreen extends StatelessWidget {
+class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return _PlainScreen(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1078,7 +1126,20 @@ class SettingsScreen extends StatelessWidget {
           const _Title('Privact Policy'),
           const SizedBox(height: 34),
           TextButton(
-            onPressed: () => context.go('/sign-in'),
+            onPressed: () async {
+              try {
+                await ref.read(authRepositoryProvider).signOut();
+                ref.read(currentProfileProvider.notifier).state = null;
+                ref.read(currentPreferencesProvider.notifier).state = null;
+                if (context.mounted) context.go('/sign-in');
+              } on AuthFailure catch (error) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text(error.message)),
+                  );
+                }
+              }
+            },
             child: const Text('Logout',
                 style: TextStyle(
                     color: Colors.red,

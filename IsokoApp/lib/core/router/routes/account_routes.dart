@@ -1,5 +1,6 @@
 import 'package:go_router/go_router.dart';
 
+import '../../../features/account/presentation/screens/profile_screen.dart';
 import '../../../features/mock/presentation/screens/mock_screens.dart';
 
 final accountRoutes = <RouteBase>[
@@ -7,6 +8,11 @@ final accountRoutes = <RouteBase>[
     path: '/menu',
     name: 'menu',
     builder: (context, state) => const MenuScreen(),
+  ),
+  GoRoute(
+    path: '/profile',
+    name: 'profile',
+    builder: (context, state) => const ProfileScreen(),
   ),
   GoRoute(
     path: '/ride-history',

@@ -61,16 +61,21 @@ Working and demonstrated:
 - The dashboard also works through the custom Vercel domain `https://test.smstechnologieset.com/` after adding the exact no-trailing-slash origin to backend CORS and restarting PM2 with the updated environment.
 - The simulator can emulate registration, CCID, heartbeat, OPEN ACK, LOCK ACK, and, in the current uncommitted local change, UPDATE ACK.
 - Manufacturer testing is beginning.
-- A Supabase project has been created for the rider-authentication/database direction. Its configuration is staged in the ignored local root `.env`; integration code and database migration have not started.
+- Supabase email/password rider authentication, direct RLS-protected profile/preferences loading, session restoration, route guards, and sign-out are implemented. The migration and one real signup, verification-email, sign-in, and sign-out flow were proven on July 27, 2026.
+- Rider profile management is implemented locally: the menu shows the signed-in rider's live name/email/private avatar, `/profile` edits the name and Auth email, verifies the current password before changing it, and uploads/replaces/removes private avatar images.
+- Rider password recovery and native auth-link routing are implemented locally. Android and iOS now use `com.smstechnologieset.isoko`; the current callback is `com.smstechnologieset.isoko://auth/callback`. Supabase allow-list configuration and physical-device acceptance remain required before this is considered operationally proven.
+- Real foreground phone-location permission/service handling and the native Mapbox map foundation are implemented locally. Android/iOS routes now use the feature-owned location/map screens, center on the real phone fix, show the native location puck/accuracy, and expose settings/retry/recenter states without fake scooter markers.
+- July 31 physical acceptance finding: the Android emulator renders Mapbox successfully, but the owner reports that the same debug APK crashes on a physical phone. The cause is open because only the emulator was visible over ADB and no phone stack trace has been captured.
+- The VPS `DATABASE_URL` intentionally remains the local scooter/admin PostgreSQL database permanently; there is no planned rider-data cutover for that database.
 
 Not yet production complete:
 
-- Rider authentication and account lifecycle.
+- Two-user RLS/Storage isolation proof, physical-device auth-link/recovery proof, verified HTTPS App Links/Universal Links, phone OTP, Google, Apple, suspension, and deletion.
 - Production admin login and account management.
 - Real-time dashboard updates.
 - Full ride persistence and state machine.
 - Pricing and billing.
-- Maps and geospatial parking-zone enforcement.
+- Live rider-safe scooter markers, validated lock-location freshness, and geospatial parking-zone enforcement. The phone map foundation exists, but the production Mapbox token and discovery API are still pending.
 - QR camera integration.
 - Payments.
 - Fleet maintenance workflows.
@@ -103,12 +108,12 @@ Status: planned.
 ### Phase 3: Rider Mobile Application
 
 - Connect the existing Flutter experience to real auth and backend data.
-- Add Mapbox and live scooter locations.
+- Complete physical-device acceptance of the implemented Mapbox/phone-location foundation, then add validated live scooter locations from the rider-safe discovery API.
 - Add camera/QR permissions and scanning.
 - Connect unlock, start ride, pause/resume, end ride, and payment flows.
 - Configure production Android/iOS identities, signing, permissions, deep links, and store releases.
 
-Status: UI prototype and network/domain foundations exist; production integration is pending.
+Status: email/password auth, rider-profile integration, custom-scheme password recovery, production-intent package/bundle identifiers, foreground phone location, and the Android/iOS Mapbox foundation are implemented locally. Supabase callback, production Mapbox token, and physical-device acceptance are pending. Live scooter markers, QR camera, rides, parking, and payments remain prototypes/planned.
 
 ### Phase 4: Operations and Scale
 
@@ -136,7 +141,7 @@ The repository contains three applications/surfaces:
    - Built as static files and deployed to Vercel.
 3. `IsokoApp/`:
    - Flutter rider application.
-   - Currently a polished interactive prototype plus reusable network/domain foundations.
+   - Real Supabase email/password auth/profile startup plus a polished interactive prototype for the remaining rider journey.
    - Admin UI code remains in the Flutter tree for historical/reference purposes, but the admin route is not included in the active router. The product decision is that admin is web-only and separate from the rider app.
 
 Production topology:
@@ -164,7 +169,7 @@ Vercel static admin dashboard
 https://scooter-backend-nu.vercel.app/
 ```
 
-The future Flutter rider app will also call the HTTPS REST API. It must never call the raw TCP port. Only locks and deliberate protocol test clients use TCP port 7000.
+The Flutter rider app calls Supabase Auth directly for identity/session lifecycle and calls the Fastify HTTPS API with the resulting access token. It must never call the raw TCP port. Only locks and deliberate protocol test clients use TCP port 7000.
 
 ## Services and Integrations
 
@@ -185,11 +190,12 @@ Current external integrations:
 - cPanel-managed DNS for `smstechnologieset.com`.
 - Let's Encrypt/Certbot for API TLS.
 - Google Fonts for Inter typography in the admin web.
-- Supabase project `jvshfztgfgzlvgznajge` has been provisioned but is not yet connected to Fastify, Flutter, Prisma, or production data.
+- Supabase project reference `jvshfztgfgzlvgznajge` provides rider Auth, rider PostgreSQL tables exposed under RLS, and private rider Storage. Fastify contains a verifier for future trusted rider endpoints. VPS PostgreSQL remains the separate scooter/admin operational database by design.
+- Mapbox Maps Flutter SDK 2.27.0 is integrated locally for Android/iOS rider maps; runtime map loading waits for a public `MAPBOX_ACCESS_TOKEN` and physical-device acceptance.
+- Geolocator 14.0.2 provides foreground phone location, permission, service-state, and settings access. It does not provide scooter-lock coordinates.
 
 Planned integrations:
 
-- Mapbox.
 - SMS/OTP.
 - Google and Apple identity.
 - MTN Mobile Money.
@@ -205,6 +211,7 @@ The backend follows explicit layers:
 
 - Fastify provides HTTP routing, lifecycle, logging integration, plugins, and request handling.
 - `@fastify/jwt` verifies Bearer JWTs.
+- A separate `authenticateRider` guard delegates Supabase access-token validation to `SupabaseRiderIdentityVerifier`; it does not reuse or weaken the manual admin JWT guard.
 - `@fastify/rate-limit` limits requests to 120 per minute.
 - Zod validates route parameters and fleet query limits.
 - CORS is applied in a Fastify `onRequest` hook, including direct `OPTIONS` responses.
@@ -252,7 +259,7 @@ Stateful TCP consequence:
 
 - `CommandDispatcher` bridges API actions to protocol packets and live sockets.
 - `DeviceService` returns scooter details and aggregate fleet metrics.
-- `RideService` currently validates scooter existence and returns an `accepted` response only. It does not yet create or update `RideSession` or `Trip` rows.
+- `RideService` currently validates scooter existence and returns an `accepted` response only. It does not persist a ride; future rider-owned ride records belong in Supabase, while raw device command evidence remains on the VPS.
 
 ### Repository Layer: `src/repositories`
 
@@ -335,13 +342,21 @@ Foundations:
 - QR payload parser.
 - Auth-method and payment-provider domain enums.
 - Ride policy constants.
+- Supabase Auth repository and session refresh notifier.
+- Password-recovery repository methods, persisted pending-recovery state, and auth-event-aware routing.
+- Direct Supabase profile/preferences repository protected by RLS.
+- Functional rider profile editor and private signed-avatar presentation using `image_picker`.
 - Android, iOS, web, Windows, macOS, and Linux generated platform shells.
+- A testable location boundary (`LocationService`), Riverpod `LocationController`, real Geolocator implementation, native Mapbox map, phone location puck/accuracy, and recenter/settings behavior.
 
 Active routing:
 
 - Initial route: `/sign-in`.
 - The active router composes auth, permission, scooter, ride, payment, and account routes.
-- The active route builders primarily use `features/mock/presentation/screens/mock_screens.dart`.
+- `/sign-in`, `/sign-up`, `/check-email`, `/forgot-password`, `/reset-password`, `/auth-loading`, `/auth-link-error`, `/account-setup`, and `/profile` use real feature-owned auth/account screens.
+- Signed-out users are redirected to sign-in; confirmed signed-in users pass through account setup, which loads their Supabase profile and preferences, before entering the rider journey.
+- Router startup waits for persisted auth/recovery state. A `PASSWORD_RECOVERY` event takes precedence over ordinary signed-in routing, and malformed/expired/wrong-device callback failures go to a safe link-error screen.
+- `/enable-location` uses the real Geolocator-backed permission screen. `/find-scooter` and `/scooter-list` use the native Mapbox screen. Camera, QR, unlock journey, ride, payment, and non-profile account route builders primarily still use `features/mock/presentation/screens/mock_screens.dart`.
 - `adminRoutes` exists but is intentionally not included in `app_router.dart`.
 
 Prototype journeys represented:
@@ -366,99 +381,63 @@ Real integration status:
 
 - `ApiClient` can send JSON GET/POST requests and attach a Bearer token.
 - `ScooterApi` defines status, lock, unlock, start/end ride, location, and battery calls.
-- `authTokenProvider` exists but no real auth flow sets it.
+- `supabase_flutter` persists and refreshes rider sessions.
+- The API client obtains the current Supabase access token from `AuthRepository` for every protected request.
+- Real email/password sign-up, email-confirmation pending, sign-in, restored sessions, direct profile/preferences loading, and local sign-out are implemented.
+- Forgot Password sends a non-enumerating Supabase recovery request using `AUTH_REDIRECT_URL`; a valid callback opens the set-new-password screen, while invalid/expired/wrong-device links show a generic safe error.
+- Recovery uses Supabase PKCE. A pending marker stored through `supabase_flutter`'s exported shared-preferences adapter preserves cold-start routing on the same app installation and is cleared on completion or ordinary sign-in/sign-out.
+- Supabase creates the rider's `profiles` and `user_preferences` rows with an Auth database trigger. Flutter reads them directly using the signed-in session and RLS. No rider profile is created or stored on the VPS.
+- The hamburger/menu identity header reads `currentProfileProvider` and a signed private-avatar URL; tapping it pushes `/profile`.
+- The profile screen updates `profiles.display_name`, requests email changes through Supabase Auth, and reauthenticates with the current email/password before changing a password.
+- Avatar selection accepts JPEG/PNG/WebP up to 5 MB, stores a timestamped object under `<auth-user-uuid>/`, updates only the owned `avatar_path`, removes replaced files best-effort, and renders via a 24-hour signed URL with initials fallback.
+- `LocationController` distinguishes checking/requesting, service-disabled, denied, permanently denied, unavailable, and ready states. It can open relevant settings and retains a last known phone fix when refresh temporarily fails.
+- The active map is native Android/iOS Mapbox Standard styled for the dark ISOKO UI. It centers on the phone and intentionally shows no scooter marker until a rider-safe discovery endpoint supplies validated lock coordinates.
 - Prototype screens mostly navigate locally and use static values.
-- The native Mapbox SDK is not installed.
+- `mapbox_maps_flutter` 2.27.0 and `geolocator` 14.0.2 are installed. Stable Mapbox 2.x is native Android/iOS only; web/desktop show an explicit unsupported state.
 - The camera/QR scanner package is not installed.
-- Location and camera permissions are not declared in the current Android manifest or iOS Info.plist.
+- Foreground location is declared on Android/iOS; camera permission remains undeclared.
 - The dedicated `features/scan/presentation/screens/qr_scan_screen.dart` file is empty.
-- Android still uses `com.example.isoko_scooter` and release builds use debug signing.
+- Android application ID/namespace and iOS bundle ID are `com.smstechnologieset.isoko`. Both platforms register the `com.smstechnologieset.isoko://auth/callback` custom scheme. Android release builds still use debug signing.
 - Flutter web metadata still contains default Flutter descriptions/colors.
-- The older feature-specific auth/map screens coexist with the newer consolidated mock screens and are not the active route targets. This duplication is technical debt.
+- Feature-specific auth, location, and map screens are active. Older unused map/location/prototype widgets still coexist with consolidated mock screens; this duplication remains technical debt.
 
 ## Database Architecture
 
-Provider: PostgreSQL through Prisma.
+The platform deliberately uses two PostgreSQL ownership domains.
 
-Datasource:
+### VPS Scooter/Admin PostgreSQL
 
-- Connection string comes only from `DATABASE_URL`.
-- Production database is local to the VPS.
-- Database name: `scooter_lock`.
-- Database role: `scooter`.
-- Secret password is stored in `/opt/scooter-lock/.env` and must never be committed or documented.
+- Accessed by Prisma through the VPS-local `DATABASE_URL`.
+- Production database: `scooter_lock`; production role: `scooter`; credentials remain only in `/opt/scooter-lock/.env`.
+- Owns operational hardware and admin data only.
+- Current Prisma models are `Admin`, `Scooter`, `ScooterConnection`, `ScooterTelemetry`, `Command`, `CommandHistory`, `Location`, and `AuditLog`.
+- `Admin` is a future standalone operational account record with email, role, and status. The manual JWT flow does not query it yet.
+- `Scooter` is the device/fleet record and owns hardware identifiers, versions, current battery/signal/lock/ride/authentication/online state, heartbeat/GPS state, and relations to operational histories.
+- `ScooterConnection` records accepted TCP connection lifecycles.
+- `ScooterTelemetry` stores raw and parsed device packets for operational analysis.
+- `Command` and `CommandHistory` store outbound command lifecycle and evidence.
+- `Location` is reserved for normalized scooter location history; current coordinates are stored on `Scooter` and in telemetry.
+- `AuditLog` is for future admin/operational audit events and currently has only an optional admin relationship.
+- The Prisma `User`, `Trip`, and `RideSession` models were removed locally on July 26, 2026 because they violate the user-data ownership decision.
 
-Models:
+Production schema caution:
 
-### `User`
+- The pilot historically used `npx prisma db push`; there is no committed Prisma migration baseline.
+- Legacy user/ride tables may still physically exist in production even after their Prisma models are removed.
+- Never run `prisma db push` in a way that drops those tables without first inventorying rows, taking a verified off-server backup, and applying a reviewed cleanup migration.
+- Future VPS schema evolution must establish a baseline and use reviewed `prisma migrate deploy` migrations.
 
-- Future rider/admin identity record.
-- Unique email, password hash, optional name, string role.
-- Relations to ride sessions, trips, audit logs, and optional admin profile.
-- Current API does not expose user registration/login and does not create these records.
+### Supabase Rider PostgreSQL/Auth/Storage
 
-### `Admin`
-
-- Future admin profile linked one-to-one to a `User`.
-- Unique user ID and email, string role, audit log relation.
-- Current manual JWT flow does not query this table.
-
-### `Scooter`
-
-- Core device/fleet record.
-- Unique manufacturer `deviceId`.
-- SIM CCID and hardware/software/firmware versions.
-- Battery and signal values.
-- Lock, ride, authentication, and online state.
-- Heartbeat/GPS timestamps and coordinates.
-- Relations to connections, telemetry, commands/history, trips, ride sessions, and locations.
-
-### `ScooterConnection`
-
-- One row per accepted TCP connection.
-- Tracks socket ID, remote address/port, device association, connected/disconnected timestamps, and reason.
-
-### `ScooterTelemetry`
-
-- Immutable-style packet log.
-- Stores command, sequence, parsed fields as JSON, raw packet, selected derived telemetry, and received time.
-- Retains unknown documented/undocumented packet data for later analysis.
-
-### `Command`
-
-- One row per server command.
-- Tracks scooter/device, type, sequence, JSON payload, queued/sent/acknowledged/timed-out/failed state, retries, timestamps, and error.
-
-### `CommandHistory`
-
-- Event history related to a command where possible.
-- Stores status transitions, message, and sent packet.
-
-### `Trip`
-
-- Future commercial trip record with user/scooter, start/end times, optional locations, distance, fare, and status.
-- Not currently written by `RideService`.
-
-### `RideSession`
-
-- Future active ride lifecycle record with user/scooter/status and timestamps.
-- Not currently written by `RideService`.
-
-### `Location`
-
-- Future normalized scooter location history.
-- Current repository updates coordinates on `Scooter` and stores coordinates in `ScooterTelemetry`; it does not create `Location` rows.
-
-### `AuditLog`
-
-- Future user/admin action audit data with entity references and JSON metadata.
-- Current routes do not write audit logs.
-
-Database change status:
-
-- The pilot used `npx prisma db push` to synchronize the schema.
-- There is no committed `prisma/migrations/` history.
-- Production evolution should move to generated, reviewed Prisma migrations and `prisma migrate deploy`.
+- Supabase owns all rider/user-related data, not merely credentials.
+- `auth.users` owns email/password identities, verification state, provider identities, sessions, and password hashes.
+- `public.profiles` owns display name, private avatar path, account status, and timestamps. Its UUID is the corresponding `auth.users.id`.
+- `public.user_preferences` owns language, currency, distance unit, and notification preferences.
+- An Auth trigger creates profile/preferences rows and the migration backfills pre-existing Auth users.
+- RLS and column-level grants restrict each authenticated rider to their own row and prevent client changes to status, IDs, and timestamps.
+- Private `avatars` Storage restricts each rider to objects under `<auth-user-uuid>/<filename>`, allows only JPEG/PNG/WebP, and limits objects to 5 MB.
+- Migration source: `supabase/migrations/202607260001_user_foundation.sql`.
+- Future rider-owned reservations, rides, payments, wallet ledger entries, ratings, referrals, support, push registrations, and privacy events belong in Supabase, but tables are created only after their business rules are approved.
 
 ## Authentication Flow
 
@@ -494,20 +473,27 @@ This flow is temporary. It provides cryptographic role enforcement but does not 
 - Browser-safe cookie storage.
 - Audit logging.
 
-Current rider authentication:
+Current rider authentication, profile, and recovery flow, implemented during July 26-29, 2026:
 
-- There are no registration, login, OTP, social, password-reset, or refresh endpoints.
-- Flutter has declared intended auth methods: phone OTP, email/password, Google, and Apple.
-- `authTokenProvider` starts as null.
-- Prototype sign-in buttons navigate without authenticating.
+1. Flutter initializes `supabase_flutter` from build-time project URL and public publishable/legacy anon key.
+2. Supabase Auth owns email/password signup, email confirmation, sign-in, token refresh, persisted session, and local sign-out.
+3. GoRouter listens to auth-state changes and prevents signed-out access to protected app routes.
+4. The Auth insert trigger creates `public.profiles` and `public.user_preferences` with the same UUID.
+5. Flutter's `ProfileRepository` directly selects those rows through the Supabase Data API using the current session; RLS enforces ownership.
+6. The account setup screen rejects a non-active profile and loads current profile/preferences into Riverpod state.
+7. The menu consumes that shared state, displays the rider identity/avatar, and opens `/profile` when tapped.
+8. Profile name/avatar changes use the signed-in rider's RLS context. Email/password changes use Supabase Auth; password change first reauthenticates with the current password.
+9. Signup and profile email-change requests pass the configured native callback to Supabase Auth.
+10. Forgot Password calls Supabase Auth without revealing account existence, marks recovery pending locally, and tells the rider to open the email on the same device/app installation.
+11. Supabase emits `PASSWORD_RECOVERY` after a valid PKCE callback. The auth notifier preserves the event type, forces `/reset-password` ahead of normal signed-in routing, and allows `updateUser(password: ...)` only while a session exists.
+12. Persisted pending-recovery state supports cold starts. Completion and normal sign-in/sign-out clear the marker; link errors route to `/auth-link-error` with non-sensitive retry guidance.
+13. Fastify also has an `authenticateRider` decorator that validates future rider API Bearer tokens through the project's `/auth/v1/user` endpoint. No current route uses that decorator yet.
 
-Selected rider-authentication direction as of July 22, 2026:
-
-- Supabase Auth will own rider sign-up, sign-in, session refresh, logout, email verification, password reset, phone OTP, and later Google/Apple identity.
-- Flutter will use `supabase_flutter` with a public publishable/anon key and pass the current Supabase access token to Fastify.
-- Fastify will verify Supabase rider tokens and remain the authority for application roles, resource ownership, reservations, rides, payments, and scooter commands.
+- Supabase is the authority for rider identity and all rider-owned data.
+- Fastify will remain the trusted authority for operations that cross into physical scooter state and commands. Future reservation/ride/payment orchestration may use Fastify and/or Supabase Edge Functions, but direct client writes alone must not authorize a lock command.
 - The working admin dashboard will temporarily keep its existing manual admin JWT flow so rider-auth work does not break operations.
-- Email/password is the first planned end-to-end provider. Phone OTP, Google, and Apple follow after their external provider configuration is available.
+- Supabase callback allow-list configuration and Android/iOS physical-device recovery acceptance remain pending. Verified HTTPS App Links/Universal Links, phone OTP, Google, Apple, preference-edit UI, and full account deletion/suspension workflows remain future work.
+- The Supabase migration and one-account auth proof passed. The project owner manually tested the menu/profile implementation and reported it working well on July 27; two-account RLS/Storage isolation still requires explicit proof. No VPS rider-profile deployment is required.
 - The complete phased plan is `docs/supabase-implementation-plan.md`.
 
 ## Authorization Model
@@ -515,6 +501,8 @@ Selected rider-authentication direction as of July 22, 2026:
 Current model:
 
 - Public: `GET /health`.
+- Supabase `authenticated` role plus RLS: own `profiles`, own `user_preferences`, and own private avatar folder.
+- Fastify Supabase rider guard exists for future routes but is not currently attached to a route.
 - Any valid JWT: `/scooters/*` rider-facing routes.
 - JWT with `role: admin`: `/admin/*`.
 
@@ -528,8 +516,8 @@ Limitations:
 
 Future model should include:
 
-- Database-backed users/admins.
-- Short-lived access tokens and refresh/session management.
+- Supabase-backed rider identity and user-owned records.
+- Database-backed admin identities with MFA and revocation.
 - Resource ownership and ride-state checks.
 - Role/permission policy for operations, maintenance, finance, support, and super-admin.
 - Audit logs for every sensitive command and account change.
@@ -559,7 +547,11 @@ https://api.smstechnologieset.com
 
 The `:id` value is the database scooter UUID, not the manufacturer device ID or public code.
 
-### Rider/General Authenticated Routes
+### Rider/General Authenticated Route Skeletons
+
+There are currently no `/me` routes. Rider profile and preference access goes directly to Supabase under RLS.
+
+The following older scooter skeletons use the legacy custom `JWT_SECRET`, not Supabase rider authentication:
 
 - `POST /scooters/:id/unlock`
 - `POST /scooters/:id/lock`
@@ -579,13 +571,14 @@ Current route caveats:
 - `/ride` and `/telemetry` return small projections of current scooter state, not full persisted ride/telemetry history.
 - Ride start/end return accepted after existence validation only.
 - There is no lookup endpoint by public scooter code such as `BK2113`.
-- There are no auth, payment, pricing, parking-zone, history, or admin-account APIs yet.
+- There are no production-safe rider discovery, reservation, payment, pricing, parking-zone, history, or admin-account APIs yet.
+- Do not connect these generic command routes to Flutter. They lack reservation/ownership/concurrency checks and expose maintenance operations that riders must never receive.
 
 ### Error Mapping
 
 - 400: validation error.
 - 401: authentication required.
-- 403: admin access required.
+- 403: authenticated identity lacks required access.
 - 404: scooter/resource not found.
 - 409: scooter is not connected in the live socket map.
 - 422: protocol configuration incomplete.
@@ -714,7 +707,7 @@ Status:
 - Reference conversions are `340 -> 0%`, `364 -> 19%`, `365 -> 20%`, `376 -> 40%`, `388 -> 61%`, and `410 -> 100%`.
 - The manufacturer identified the battery as a 10,000 mAh ternary lithium battery.
 - The manufacturer says unlocking is generally not allowed below 25%, network connectivity becomes unstable around 5%, and 4G stops at calculated 0% even though the battery may still output power.
-- The second STATUS value is solar-panel voltage. Charging starts when solar voltage is at least battery voltage plus 10 units and ends when solar voltage is below battery voltage. Behavior in the intervening hysteresis band remains unconfirmed.
+- The second STATUS value is solar-panel voltage. Charging starts when solar voltage is at least battery voltage plus 10 units and ends when solar voltage is below battery voltage. Between those thresholds, the previous charging state is retained. If no prior state exists after a restart, charging remains unknown until one threshold is crossed.
 - Local code now derives `batteryPercent` from STATUS field 1 and stores STATUS field 3 in `signalStrength`. The admin web and inactive Flutter admin reference UI display the signal as a raw value without a `%` suffix because its scale/unit remains unconfirmed.
 - Raw battery voltage, raw solar voltage, and charging state are not yet persisted as structured fields.
 
@@ -769,6 +762,22 @@ BLE information retained for future work:
 - Notify characteristic UUID: `0x6E400030B5A3F393E0A9E50E24DCCA9E`
 - The manufacturer says the 80-character key information is submitted to the platform during factory production.
 - Current system does not implement BLE or distribute this key material to the app.
+
+SIM, APN, server configuration, power, and module findings from July 26, 2026:
+
+- Geographic constraint: scooters/locks are at the factory in China, will operate in Rwanda, and software support is being developed from Ethiopia. Incorrect connectivity settings after arrival cannot be repaired remotely if the lock is offline.
+- The installed SIM is physically difficult to replace; the factory has not yet supplied the internal access procedure, SIM form factor, sealing/warranty impact, or confirmation that it is socketed rather than soldered/embedded.
+- A replacement SIM must be compatible with the cellular module and configured with the carrier's APN.
+- The manufacturer says local APN configuration requires additional Bluetooth protocol development. The current backend, admin web, and Flutter app cannot configure APNs.
+- The existing remote firmware reportedly supports changing the server domain name, but the exact command/ACK format is absent from the reviewed protocol documents and is not implemented by the backend.
+- Remote server redirection only works while the lock still has a functioning SIM/APN connection. Bluetooth configuration is required as the local recovery path when the lock cannot reach the existing server.
+- The lock uses its own internal rechargeable battery. The scooter's main battery only charges the lock battery, so removing the main battery does not immediately stop the lock, GPS, or 4G while internal charge remains.
+- Each lock currently uses unique fixed password/key material. Per-ride dynamic Bluetooth credentials would require a jointly designed firmware/backend/mobile algorithm and lifecycle.
+- The lock is physically difficult to remove without cutting or prolonged disassembly, but this does not establish active tamper detection.
+- The cellular modem is described only as a Quectel 4G Cat 1 module intended for the European market. Exact model and LTE bands remain unknown, so Rwanda carrier compatibility is not yet proven.
+- Full-batch shipment should be gated on a production-representative Rwanda pilot. The preferred sequence is factory configuration/testing in China, shipment of one unit to Rwanda, real-network acceptance, then release of the remaining batch.
+- Rwanda workers must not be expected to dismantle locks or configure APN/server settings without a secured factory tool, training, and documented maintenance procedure.
+- Detailed interpretation and the required Rwanda validation sequence are in `docs/manufacturer-follow-up-2026-07-26-sim-server-hardware.md`.
 
 ## Command Data Flow
 
@@ -1087,17 +1096,20 @@ Secret values:
 
 - PostgreSQL password in `DATABASE_URL`.
 - `JWT_SECRET`.
-- Supabase backend service-role/secret key.
+- Supabase service-role/secret key if a future backend-management operation genuinely requires it. The current rider-auth verifier does not require or consume this privileged key.
 - Future payment, Mapbox, SMS/OTP, email, OAuth, and monitoring credentials.
 
 Local development configuration:
 
 - The root `.env` was created on July 22, 2026 and is excluded by `.gitignore`.
 - It currently contains `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY`.
-- It is configuration staging only and does not yet contain all variables required to start the existing backend.
+- It does not contain `DATABASE_URL` or `JWT_SECRET`, so it cannot start the full local backend by itself.
+- `IsokoApp/env.local.json` contains only the API URL, Supabase URL, and public legacy anon key needed for local Flutter builds. It is explicitly ignored by Git.
+- `npm run mobile:env` regenerates that file from root `.env` and intentionally never copies `SUPABASE_SERVICE_ROLE_KEY`.
 - No Supabase secret was added to `.env.example`, Flutter, `admin-web`, Git, or project documentation.
 - The supplied legacy service-role key was exposed in conversation and must be rotated before production use.
 - Prefer Supabase's newer publishable key for Flutter and secret key for trusted backend management calls when available.
+- The VPS needs `SUPABASE_URL` plus a public publishable/legacy anon key only when a trusted Fastify rider route uses the verifier; direct profile/preferences loading does not require a VPS Supabase key. Never add the service-role key for token verification.
 
 Known production non-secret settings:
 
@@ -1357,20 +1369,37 @@ Flutter:
 - QR payload parser.
 - Domain decisions for auth, payment, currency, country, ride pause, and parking-zone behavior.
 - Focused Flutter tests for initial UI, QR parsing, and admin payload parsing.
+- Supabase email/password signup and sign-in.
+- Email-confirmation pending screen.
+- Persisted/refreshed Supabase sessions and auth-aware GoRouter redirects.
+- Current-session Bearer token forwarding to Fastify.
+- Direct Supabase RLS profile/preferences load with retry/error state.
+- Working local sign-out from Settings.
+- Supabase migration for Auth-linked profiles, preferences, updated timestamps, RLS/column grants, new-user trigger/backfill, and private avatar storage.
+- Safe `npm run mobile:env` generator that copies only public root `.env` values into ignored Flutter configuration.
+- Live hamburger identity header showing the current rider's display name, email, and signed private avatar with initials fallback.
+- Functional `/profile` screen for display-name changes, Supabase Auth email-change requests, current-password-verified password changes, and private avatar choose/replace/remove actions.
+- Profile widget tests covering name/email and password operations are present and compile under Flutter analysis.
+- Functional Forgot Password and Set New Password flow using Supabase Auth.
+- Non-enumerating recovery-request success copy, friendly validation/rate-limit/network errors, and reusable auth message presentation.
+- Preserved Supabase auth event types and recovery-first GoRouter redirects with loading and invalid-link routes.
+- Persisted same-installation recovery marker for cold-start PKCE callbacks using Supabase Flutter's existing local-storage adapter.
+- Android application ID/namespace and iOS bundle ID changed to `com.smstechnologieset.isoko`; both native projects register `com.smstechnologieset.isoko://auth/callback`.
+- Recovery-focused widget tests cover reset request, recovery-event routing/password update, and safe invalid-link presentation.
 
 ## In Progress
 
 - Manufacturer thorough testing of the real lock and protocol behavior.
 - Battery/signal correction is implemented and tested locally but has not yet been pulled, built, restarted, and observed on the production VPS/Vercel deployment.
 - Simulator UPDATE ACK exists as an uncommitted local modification.
-- Supabase rider-authentication and database architecture planning. No implementation code or production database cutover has begun.
+- Supabase rider-auth/profile foundation is live in the Supabase project: the migration ran successfully, one real rider completed signup/verification/sign-in/sign-out, and the project owner then reported the live menu/profile experience working well on July 27, 2026. Cross-user RLS/Storage proof remains pending.
+- Password recovery/custom-scheme callback handling is complete locally. Supabase Redirect URL configuration plus real Android/iOS same-device and cold-start acceptance are pending.
 
 ## Planned Features
 
-- Supabase-backed rider authentication, session restoration, and account lifecycle.
-- Supabase PostgreSQL migration through Prisma after backup, migration, and rollback validation.
+- Remaining Supabase account lifecycle: physical-device callback acceptance, later verified HTTPS App Links/Universal Links, preference editing, phone OTP, Google/Apple, suspension, deletion, and later admin identity.
 - Real admin authentication, initially kept separate from the rider-auth migration.
-- User/admin account management.
+- Rider account management in Supabase and admin account management in the VPS operational domain.
 - Real scooter public codes.
 - Scooter discovery/list API.
 - Ride lifecycle persistence and concurrency control.
@@ -1394,9 +1423,9 @@ Flutter:
 - Manual seven-day admin JWT generation/paste.
 - Admin token in browser `localStorage`.
 - No logout/revocation.
-- Database Admin/User models unused by auth.
+- Admin model remains unused by the temporary admin JWT flow.
 - Ride service only returns `accepted`.
-- `Trip`, `RideSession`, `Location`, and `AuditLog` are mostly future schema.
+- `Location` and `AuditLog` are mostly future VPS operational schema; rider-owned ride records will be added to Supabase after the ride state machine is defined.
 - Dashboard events are derived client-side from current scooter snapshots.
 - Dashboard is not realtime.
 - Admin action busy state disables every action button while one command is pending.
@@ -1416,9 +1445,10 @@ Flutter:
 - UPDATE only confirms command acceptance/start at present; update progress and final result are not tracked.
 - No database migrations.
 - Flutter screens use hardcoded people, scooter codes, distances, fares, dates, and locations.
-- Flutter app still defaults to an obsolete direct HTTP IP URL unless overridden by `--dart-define`; production should use HTTPS domain.
+- Profile/preferences foundation is live in Supabase and the project owner reports profile editing/private avatar UI working well. Preference editing, cross-user RLS/Storage proof, and the remaining account lifecycle are still incomplete.
+- Custom-scheme password recovery and callback plumbing are implemented, but the exact callback must be added to Supabase and proved on physical devices. Production HTTPS App Links/Universal Links are not implemented.
 - Native location/camera permissions and packages are absent.
-- Android package identity/signing is placeholder.
+- Mobile package/bundle identity is `com.smstechnologieset.isoko`; Android release signing is still the debug placeholder and iOS production signing/provisioning is not configured.
 - Flutter web metadata is placeholder.
 
 ## Technical Debt and Refactoring Areas
@@ -1441,36 +1471,20 @@ Flutter:
 
 ## Current Working Tree
 
-Current local working tree on July 24, 2026:
+Current local working tree on Wednesday, July 29, 2026:
 
 ```text
 Branch: main tracking origin/main
-Modified:
-  IsokoApp/lib/features/admin/domain/admin_dashboard.dart
-  IsokoApp/lib/features/admin/presentation/screens/admin_dashboard_screen.dart
-  admin-web/src/main.js
-  scripts/scooter-simulator.ts
-  src/services/deviceService.ts
-  src/tcp/protocolRouter.ts
-  tests/tcp/protocolRouter.test.ts
-
-Untracked:
-  PROJECT_DATA.md
-  docs/manufacturer-follow-up-2026-07-24.md
-  docs/supabase-implementation-plan.md
+Modified/untracked groups:
+  July 26 manufacturer/SIM documentation preserved from the prior session
+  backend Supabase rider-token guard/config/tests and the corrected scooter/admin-only Prisma schema
+  Supabase user-foundation migration and Flutter Supabase auth/profile foundation
+  Flutter functional profile editor, private avatar picker/presentation, router/menu integration, tests, and generated plugin registrants
+  Flutter password recovery, auth-event routing/persistence, native package identities/custom callback registration, tests, and auth-link documentation
+  deployment/implementation planning plus PROJECT_DATA.md
 ```
 
-The simulator modification adds:
-
-```ts
-if (text.includes("UPDATE")) {
-  socket.write(packet("ACK^UPDATE:00", sequenceFromPacket(text)));
-}
-```
-
-The July 24 telemetry modifications add the manufacturer battery formula, raw signal extraction, below-25% low-battery behavior, matching backend tests, dashboard presentation changes, and permanent documentation. Preserve all of these changes unless deliberately superseded.
-
-Do not discard it accidentally. Review, test, and commit it with this document or in a deliberate follow-up.
+The July 24 telemetry/simulator work is committed in `main`. The current working tree combines preserved manufacturer documentation, the July 26 corrected rider-auth foundation, July 27 profile-management work, and the interrupted July 27-29 recovery/native-link slice; it has not yet been committed or pushed. Content-identical formatter-restored Flutter files may appear modified in `git status` because of Windows line-ending/stat behavior; use `git diff`/`git hash-object` to distinguish real changes before committing.
 
 # Project Timeline
 
@@ -1693,6 +1707,122 @@ Do not discard it accidentally. Review, test, and commit it with this document o
 - `docs/manufacturer-follow-up-2026-07-24.md` was created.
 - Production deployment is still pending.
 
+## July 26, 2026: SIM, APN, Server Configuration, and Hardware Clarification
+
+- The client asked whether new SIM cards can be installed and configured in Rwanda.
+- Manufacturer said the installed SIM is not easy to replace and a replacement requires APN evaluation/configuration.
+- Manufacturer said local APN and server-domain configuration requires additional Bluetooth protocol development.
+- Manufacturer said the current remote protocol already supports changing the server domain, but did not provide the exact remote command/ACK format.
+- Operational conclusion: Rwanda replacement is technically possible in principle but is not currently a supported self-service workflow.
+- A workable field process requires a factory-supplied secured Bluetooth configuration protocol/tool, the physical SIM replacement procedure, APN read/write and persistence behavior, and a proven carrier test.
+- Because the scooters are in China, will be deployed in Rwanda, and the developer is in Ethiopia, the batch must not ship on assumptions. A real Rwanda pilot unit is the preferred release gate.
+- Manufacturer confirmed the lock has its own internal rechargeable battery and the scooter's main battery only charges it.
+- Manufacturer confirmed each lock currently has unique fixed password/key material; dynamic per-ride credentials would require a new agreed algorithm.
+- Manufacturer described the lock as physically difficult to remove, but this does not imply active tamper sensing.
+- Manufacturer identified the modem only as a European-market Quectel 4G Cat 1 module. Exact model and LTE bands remain required before Rwanda carrier compatibility can be approved.
+- The earlier charging interpretation was corrected: the supplied entry and exit thresholds define stateful hysteresis; the previous state is retained between thresholds.
+- `docs/manufacturer-follow-up-2026-07-26-sim-server-hardware.md` was created.
+
+## July 26, 2026: First Functional Flutter Rider Auth/Profile Slice
+
+- Project owner explicitly approved beginning the first Supabase mobile-app implementation slice.
+- Added `supabase_flutter` 2.16.0 and public build-time configuration with preferred publishable-key and legacy anon-key support.
+- Replaced the active mock auth routes with real email/password signup, email-confirmation pending, sign-in, restored sessions, auth-aware routing, profile setup/retry, and local sign-out.
+- Changed Flutter's default API URL from the obsolete HTTP VPS IP to `https://api.smstechnologieset.com`.
+- Connected every Flutter API request to the current Supabase session access token.
+- Added a separate Fastify Supabase rider guard while preserving the existing manual admin JWT and custom-JWT scooter route skeletons.
+- Fastify validates each rider access token against this project's `/auth/v1/user` endpoint using only the public key; no service-role key or Supabase signing secret is embedded.
+- Added `POST /me/bootstrap` and `GET /me`, `UserProfileService`, repository abstraction, and Prisma implementation.
+- Updated `User` for nullable email/legacy password hash, phone, active status, and verification timestamps; new rider IDs are Supabase Auth UUIDs.
+- Added an explicit pilot SQL file because the existing database has no valid Prisma migration baseline.
+- Added `docs/mobile-auth-deployment.md` with backup, schema, environment, restart, regression, run, and rollback steps.
+- Verified the Supabase Auth settings endpoint: email provider enabled, signup enabled, phone provider disabled.
+- Production was intentionally not changed. VPS schema/config/code rollout and one real confirmed-user test remain pending.
+
+## July 26, 2026: Rider Data Ownership Correction Before Deployment
+
+- Project owner clarified that Supabase must own every rider/user concern, while VPS PostgreSQL must remain scooter/admin-only.
+- The intermediate `/me` plus VPS rider-profile implementation was removed before it reached production.
+- Removed local Prisma `User`, `Trip`, and `RideSession` models, the `/me` route, rider profile service/repositories, associated API test, and the VPS rider-profile SQL.
+- Added `public.profiles` and `public.user_preferences` to a Supabase migration with Auth trigger/backfill, timestamp triggers, RLS, column grants, and owner-only private avatar Storage.
+- Changed Flutter account setup to read profile/preferences directly from Supabase under the signed-in rider's RLS context.
+- Added a safe public-config generator from root `.env`; the service-role key is intentionally excluded.
+- Rewrote Supabase planning/deployment/Flutter decision documents around the permanent two-database ownership boundary.
+- Preserved Fastify's Supabase token verifier for later trusted physical-scooter operations but did not attach rider lock controls.
+- No VPS, Supabase project, Vercel deployment, DNS, Nginx, PM2, or production database was changed during this correction.
+
+## July 27, 2026: Rider Auth Proof and Functional Profile Management
+
+- The project owner ran the Supabase migration and proved one real rider signup, verification email, sign-in, and sign-out flow.
+- Expanded the Supabase profile repository with display-name updates, Auth email updates, current-password reauthentication and password changes, private avatar upload/removal, owner-path validation, signed URLs, size/type checks, and compensating upload cleanup.
+- Added shared avatar URL state and a reusable avatar widget with network-image and initials fallback.
+- Replaced the menu's hardcoded rider identity with live profile state and made the identity header open `/profile`.
+- Added a real profile screen with independent personal-details, password, and avatar actions plus friendly validation/errors and responsive layout.
+- Added `image_picker` 1.2.2, generated native plugin registrations, and the iOS photo-library usage description.
+- Added focused profile widget tests. Flutter analysis passed with no issues and a configured Android debug APK built successfully; the managed runner still timed out while executing the focused widget test, so no widget-test pass is claimed for this session.
+- No VPS, Vercel, Nginx, DNS, scooter/admin PostgreSQL, or physical lock behavior changed.
+
+## July 27-29, 2026: Password Recovery, Auth Links, and Native Identity
+
+- Added `AUTH_REDIRECT_URL`, defaulting to `com.smstechnologieset.isoko://auth/callback`, to tracked examples, Flutter runtime config, and the public-only config generator.
+- Added Supabase password-reset request and recovered-password update methods while preserving non-enumerating success text and friendly auth failures.
+- Preserved Supabase auth event types instead of collapsing every event into a generic refresh signal.
+- Added persistent pending-recovery state using `supabase_flutter`'s exported shared-preferences local-storage adapter; no new package was required.
+- Made `PASSWORD_RECOVERY` override ordinary signed-in routing and added safe behavior for malformed, expired, reused, and wrong-device PKCE links.
+- Added Forgot Password, Reset Password, Auth Loading, and Auth Link Error screens plus reusable auth messages and a sign-in recovery link.
+- Signup and profile email-change requests now use the configured callback URL.
+- Changed the Android application ID/namespace and iOS bundle ID from the Flutter placeholder to `com.smstechnologieset.isoko`; moved Android `MainActivity` to the matching Kotlin package and registered the native callback scheme on both platforms.
+- Kept Android debug signing and a custom URL scheme for the current stage because release certificate fingerprints, Apple Team ID, associated-domain entitlements, and hosted association files are not yet available.
+- Reserved `https://app.smstechnologieset.com/auth/callback` for a later verified App Links/Universal Links migration.
+- Added `docs/mobile-auth-links.md` and updated mobile deployment, Supabase roadmap, Flutter implementation decisions, and this permanent project record.
+- `npm.cmd run mobile:env`, Flutter analysis, and a configured Android debug APK build passed. The focused recovery widget-test process remained silent and timed out after 240 seconds, so no test pass or failure is claimed.
+- No VPS, Nginx, Vercel, Supabase SQL schema, scooter/admin PostgreSQL, or lock protocol behavior changed.
+
+## July 29, 2026: Sub-One-Month APN and Shipment Strategy
+
+- The project owner clarified that the scooters remain in China, a separate complete-bike Rwanda pilot cannot be shipped, and full project completion/deployment is targeted within less than one month.
+- Confirmed that a complete bike is not required for cellular validation: a final-firmware loose lock/module can be bench-powered because the lock has its own battery and the scooter battery only charges it.
+- Defined a fastest-safe order: loose-lock test if possible; otherwise actual-SIM roaming/APN and wrong-APN recovery testing in China, exact module-band/carrier evidence, full-batch shipment, then a mandatory first-arrival Rwanda unit gate before worker deployment.
+- Separated physical batch shipment from field activation so schedule pressure does not become permission to expose the entire fleet to an unproven local carrier configuration.
+- Updated the manufacturer SIM/APN handover with minimum China evidence, staged Rwanda activation, pass/fail criteria, and residual-risk language.
+- Created `docs/four-week-delivery-plan.md` with a July 29-August 25 engineering calendar, proposed launch MVP, Day-1 client/factory inputs, parallel workstreams, weekly gates, Google Play/App Store checklists, risks, and definition of done.
+- Recorded that public store approval cannot be guaranteed by engineering: account verification, mandatory testing rules, and app review are external. First submission is targeted for Week 3 rather than the deadline week.
+
+## July 30, 2026: Real Phone Location, Mapbox Foundation, and Factory BLE/GPS Update
+
+- Added `mapbox_maps_flutter` 2.27.0 and `geolocator` 14.0.2 to the Flutter rider app.
+- Added a testable phone-location service/domain/controller with explicit device-service, permission, permanent-denial, acquisition, refresh, settings, and failure states.
+- Activated the real `/enable-location`, `/find-scooter`, and `/scooter-list` screens instead of their mock equivalents.
+- Added Android internet/coarse/fine location declarations and enforced Android SDK 21 or later.
+- Added iOS foreground-location usage text and raised all Xcode deployment-target settings from iOS 13 to iOS 14 for Mapbox compatibility.
+- Added public `MAPBOX_ACCESS_TOKEN` placeholders; the ignored local root `.env` still needs an actual public token followed by `npm run mobile:env`.
+- Added controller tests and a full setup/acceptance guide at `docs/mobile-map-location.md`.
+- Initial standalone Dart analysis reported no code issues but then exited nonzero because telemetry attempted to write `C:\Users\imkin\AppData\Roaming\.dart-tool\dart-flutter-telemetry-session.json`, which the managed filesystem denied. After access was restored, `flutter analyze --no-pub` completed normally with no issues.
+- All seven focused `location_controller_test.dart` tests passed and the configured Android debug APK built successfully with Mapbox/Geolocator at `IsokoApp/build/app/outputs/flutter-apk/app-debug.apk`.
+- Client reported that the factory is configuring firmware for Bluetooth maintenance through nRF Toolbox and that an IoT-experienced collaborator supplied the intended SIM.
+- Clarified that Bluetooth can carry local APN/server configuration but does not replace the APN, SIM data plan, compatible LTE bands, or the lock's 4G TCP path.
+- Factory stated that cellular base-station positioning was discontinued because error exceeds 500 metres, Quectel service fees apply, and foreign base stations may not support it. The product will show lock GPS as stale/unavailable when no valid recent fix exists; phone location remains separate.
+- No VPS, Supabase schema, Vercel, Nginx, DNS, PostgreSQL, PM2, or physical lock behavior changed in this slice.
+
+## July 31, 2026: Emulator Location Clarification and Physical-Phone Crash Report
+
+- Confirmed that the emulator map renders and displays the Android Emulator's simulated default coordinate around Google's Mountain View campus, not the developer's real Ethiopian location.
+- Documented how to set a test coordinate through emulator Extended controls > Location and recenter the app.
+- Project owner reported that the built debug APK crashes on a physical Android phone.
+- `adb devices -l` showed only `emulator-5554`; the physical phone was not connected/authorized, so no fatal exception, Android version, ABI, model, or native Mapbox backtrace was available.
+- No speculative code change was made. The next diagnostic is a clean uninstall/reinstall followed by physical-phone `adb logcat` capture.
+- The screenshot proves a Mapbox token reached the emulator run, while the earlier Codex APK build output did not contain a Mapbox token Dart define. The emulator and phone may therefore be running different build configurations; regenerate `env.local.json` and rebuild before comparing behavior.
+- Current `env.local.json` was subsequently confirmed to contain a public `pk.*` token, config was regenerated, and a fresh token-configured APK was built. It installed/launched on `emulator-5554`, stayed alive, and produced no filtered AndroidRuntime/native fatal event.
+
+## July 31, 2026: Sign-In Error Message Correction
+
+- Physical Android testing showed the sign-in screen displaying `Choose a stronger password and try again.` for an existing account.
+- Confirmed the sign-in form only requires a non-empty password; the misleading text came from the shared Supabase error mapper, which reused signup/password-change strength wording for sign-in failures.
+- Added a sign-in-specific error mapper: email-not-confirmed, rate-limit, and network messages remain actionable, while credential/password failures use `The email or password is incorrect.`
+- Added two regression tests covering password-strength-shaped auth errors, invalid credentials, email confirmation, and rate limits.
+- Rebuilt the token-configured Android debug APK at `IsokoApp/build/app/outputs/flutter-apk/app-debug.apk`; current SHA-256 is `537AE1EDF6CD5A70C6DB79F47DA48584AEFE5FBC8CF39F688DB83021E7FFC8D7` and size is `269745978` bytes.
+- No backend, Supabase schema, VPS, admin dashboard, or lock protocol changes were made.
+
 # Decisions
 
 ## Decision: Configure and Test the VPS Before Giving Manufacturer Details
@@ -1746,6 +1876,50 @@ Rejected/currently unnecessary because:
 Trade-off:
 
 - Payloads are unencrypted on the network; security depends on protocol/device constraints and backend validation.
+
+## Decision: Treat Rwanda SIM Replacement as Conditional, Not Yet Self-Service
+
+Decision:
+
+- Tell the client that replacing/configuring a SIM in Rwanda is technically possible in principle but is not an operationally supported self-service feature today.
+- Require factory-supported Bluetooth APN/server configuration and exact modem compatibility evidence before approving field replacement.
+
+Why:
+
+- The installed SIM is difficult to access.
+- A replacement carrier may require a different APN.
+- Once an incompatible SIM/APN is installed, the lock may be offline and unable to receive a remote correction.
+- The exact Quectel model and LTE bands have not been supplied.
+
+Alternatives:
+
+- Promise that any Rwanda SIM can be installed immediately.
+- Require every SIM replacement to be performed permanently by the factory.
+
+Rejected because:
+
+- Immediate support is not proven physically or technically.
+- Factory-only replacement may be avoidable once a secure local maintenance workflow is delivered and validated.
+
+Trade-off:
+
+- This protects operations from bricked/offline locks but requires additional factory development, documentation, and carrier testing.
+
+## Decision: Separate Remote Server Redirection from Local Recovery
+
+Decision:
+
+- Use remote domain/server configuration only while the lock is online through its current SIM/APN.
+- Use a secured Bluetooth maintenance path for APN changes and recovery when 4G connectivity is unavailable.
+
+Why:
+
+- Remote commands cannot reach a lock after a bad SIM/APN change.
+- Manufacturer says remote domain modification already exists but APN configuration requires Bluetooth protocol development.
+
+Trade-off:
+
+- Two configuration paths must be secured, tested, documented, and restricted to authorized operations staff.
 
 ## Decision: Separate Rider App and Admin Dashboard
 
@@ -2123,35 +2297,42 @@ Recorded product choices:
 - End ride outside valid parking zone blocked.
 - Android and iOS are target platforms.
 
-## Decision: Supabase for Rider Auth and Future PostgreSQL
+## Decision: Supabase Owns Rider Data; VPS PostgreSQL Owns Scooter/Admin Data
 
 Decision:
 
-- Use Supabase Auth for rider identity/session management and Supabase PostgreSQL as the intended long-term application database.
-- Keep Fastify as the authoritative application/business API and keep raw lock TCP connections on the VPS.
+- Use Supabase Auth, PostgreSQL, Storage, and appropriate platform services for all rider/user-related data.
+- Keep VPS PostgreSQL exclusively for scooter, lock-protocol, command, telemetry, and admin operational data.
+- Keep Fastify and the raw lock TCP server on the VPS for trusted physical-device orchestration.
 
 Why:
 
-- Supabase supplies managed authentication, refresh sessions, email verification, password reset, phone/OAuth support, and managed PostgreSQL.
-- Existing Prisma/PostgreSQL architecture can move to Supabase without rewriting the repositories around a proprietary database API.
-- Keeping Fastify in the middle preserves authorization, ride state, payment rules, auditability, and safe access to physical lock commands.
+- Supabase supplies managed authentication, refresh sessions, email verification, password reset, phone/OAuth support, RLS-protected PostgreSQL, Storage, Realtime, and Edge Functions.
+- Rider profile/preferences and future rider history belong together with rider identity rather than in the hardware operations database.
+- Keeping the stateful TCP service and hardware records on the VPS preserves the proven lock path and prevents user-facing database changes from destabilizing fleet communications.
+- Trusted orchestration is still required when a user action crosses into a physical lock command.
 
 Alternatives:
 
+- Store Supabase-authenticated rider profiles in VPS PostgreSQL.
+- Move the whole VPS Prisma database, including raw telemetry and commands, to Supabase.
 - Continue building custom password/JWT/session infrastructure.
-- Let Flutter directly read/write all operational tables through Supabase Data APIs.
-- Replace the VPS backend/TCP server with Supabase functions.
+- Let Flutter directly write operational lock tables.
+- Replace the stateful VPS TCP server with Supabase functions.
 
 Rejected because:
 
+- Splitting rider identity and profile/history across two databases adds synchronization, deletion, privacy, and recovery failure modes.
+- Moving the proven high-volume/stateful hardware path is unnecessary and increases deployment risk.
 - Custom auth increases security and lifecycle work.
-- Direct mobile access to operational tables weakens centralized authorization and could expose lock/ride internals.
-- Supabase functions do not replace the required stateful raw TCP lock server.
+- Direct mobile access to operational tables could expose maintenance commands and lock internals.
+- Supabase functions do not replace long-lived raw TCP device connections.
 
 Trade-offs:
 
-- The system has two trusted backend surfaces: Supabase Auth and the Fastify business API.
-- JWT verification, database migration, RLS/API exposure, keys, and backups must be configured carefully.
+- Cross-domain rider/ride UUIDs must be carried in operational command/audit metadata without duplicating rider profiles.
+- Business transactions spanning Supabase rider state and VPS device state require idempotency, reconciliation, and compensating-state design rather than an impossible cross-database ACID transaction.
+- RLS, Storage policies, keys, backups, and deletion/retention behavior must be tested carefully.
 
 ## Decision: Preserve the Working Admin JWT During Rider Auth Migration
 
@@ -2189,9 +2370,304 @@ Trade-off:
 
 - The first functional auth milestone may not be the final primary rider onboarding method.
 
+## Decision: Validate Rider Tokens Through Supabase Auth Initially
+
+Decision:
+
+- Fastify validates each rider Bearer token by calling the configured project's `GET /auth/v1/user` endpoint with the same public project key.
+
+Why:
+
+- The supplied project currently uses a legacy public anon key, while no JWT signing secret or asymmetric JWKS details were provided.
+- The Auth endpoint proves token validity, project membership, expiry, audience, subject, and current user state without exposing a signing secret.
+- This keeps the service-role key out of the app and backend auth path.
+
+Alternatives:
+
+- Verify JWTs locally with a shared Supabase JWT secret.
+- Accept claims by decoding without verification.
+- Use the service-role key to look up every user.
+
+Rejected because:
+
+- Copying a shared signing secret increases secret exposure and rotation coupling.
+- Decode-only identity is insecure.
+- Service-role privilege is unnecessary for current-user validation.
+
+Trade-offs:
+
+- Rider-protected API calls depend on Supabase Auth availability and add one network request per verification until a safe bounded verification/cache strategy is implemented.
+- A later asymmetric JWKS configuration can reduce latency and external dependency if Supabase signing is migrated and tested.
+
+## Superseded Decision: Keep Rider Profiles in VPS PostgreSQL During First Auth Proof
+
+Status:
+
+- Superseded on July 26, 2026 before deployment or production schema application. Retained to record the rejected intermediate implementation.
+
+Decision:
+
+- Use the existing VPS PostgreSQL database for `/me` profiles and do not change production `DATABASE_URL` during the first auth slice.
+
+Why:
+
+- Lock/admin production data is working and no verified Supabase database backup/restore/cutover process exists yet.
+- Auth can be proven independently from a high-risk production data migration.
+
+Alternative:
+
+- Move all Prisma models and production data to Supabase PostgreSQL at the same time as mobile auth.
+
+Rejected because:
+
+- It combines identity, schema, networking, data migration, and physical-lock regression risk in one deployment.
+
+Trade-off:
+
+- Supabase Auth and VPS PostgreSQL are separate systems temporarily; the Supabase UUID is the trusted bridge.
+
+## Decision: Direct RLS Access for Rider Profile and Preferences
+
+Decision:
+
+- Flutter reads and updates the signed-in rider's simple profile/preferences data directly through Supabase using the current Auth session and RLS.
+- Trusted multi-resource transitions such as reservation, ride start/end, payment, and lock control will use a trusted Edge Function or Fastify endpoint.
+
+Why:
+
+- Profile/preferences are user-owned Supabase data with straightforward row ownership.
+- RLS and column grants provide the correct boundary without duplicating a pass-through `/me` API.
+- Physical lock operations require stronger business authorization and cannot rely on client-controlled rows alone.
+
+Alternatives:
+
+- Route every profile read/write through Fastify.
+- Let Flutter directly write all future ride/payment/lock state.
+
+Rejected because:
+
+- A Fastify profile proxy adds code, latency, deployment coupling, and duplicate policy enforcement without improving the simple owner-row boundary.
+- Direct client control of trusted state transitions would allow tampering and race conditions.
+
+Trade-offs:
+
+- Authorization exists in both Supabase RLS and trusted service code, so ownership boundaries must be documented and tested.
+- Some future operations span both databases and need explicit reconciliation.
+
+## Decision: Keep Profile Credentials and Avatars Inside Supabase Boundaries
+
+Decision:
+
+- Display-name and avatar-path changes go directly to the rider's own `profiles` row under RLS and column-level grants.
+- Email and password changes go only through Supabase Auth; Flutter never writes credentials or password hashes to a table.
+- A password change requires a fresh sign-in with the current email/current password before calling `updateUser` with the new password.
+- Avatar objects remain in the private `avatars` bucket under `<auth-user-uuid>/`; the UI receives only a time-limited signed URL.
+- Avatar files are timestamped instead of overwritten. After the profile row points to the new object, the old object is removed best-effort; if the row update fails, the newly uploaded object is removed as compensation.
+
+Why:
+
+- Supabase Auth is the credential authority and should enforce email confirmation, password policy, and session behavior.
+- RLS, owner-path Storage policies, MIME restrictions, and the 5 MB bucket limit protect simple user-owned profile data without introducing a VPS pass-through API.
+- Reauthentication prevents a device with only an unattended live session from silently replacing the password through this screen.
+- Private objects avoid permanent public avatar URLs and keep rider media inside the authenticated ownership boundary.
+
+Alternatives considered:
+
+- Store avatars in a public bucket.
+- Proxy profile/avatar updates through Fastify on the VPS.
+- Store avatar bytes in PostgreSQL or bundle them into Auth metadata.
+- Allow password update from a live session without requesting the current password.
+
+Why rejected:
+
+- Public avatars disclose stable rider media URLs.
+- A Fastify proxy duplicates simple Supabase ownership enforcement and incorrectly couples user data to scooter infrastructure.
+- Database blobs/Auth metadata are a poor fit for replaceable media and complicate caching/size enforcement.
+- Session-only password replacement weakens the profile screen's protection on a lost or shared unlocked device.
+
+Trade-offs:
+
+- Signed URLs expire after 24 hours and are refreshed when the provider is recreated/invalidated; an avatar left continuously onscreen beyond that lifetime may need navigation or an explicit future timer refresh.
+- Email-change completion depends on Supabase email templates, redirect configuration, and confirmation policy.
+- Reauthentication can rotate/refresh the session and currently supports password-based accounts only; provider-only accounts need a separate UX later.
+- Old-avatar deletion is best-effort, so rare network failures can leave an unreferenced private object for future cleanup.
+
+## Decision: Use a Custom Auth Callback Before Verified HTTPS Links
+
+Decision:
+
+- Use `com.smstechnologieset.isoko` as the Android application ID/namespace and iOS bundle ID.
+- Use `com.smstechnologieset.isoko://auth/callback` for current Supabase signup, email-change, and password-recovery callbacks.
+- Keep recovery based on Supabase PKCE and require the email link to open on the same app installation/device that requested it.
+- Migrate later to `https://app.smstechnologieset.com/auth/callback` only after platform association and release-signing requirements are complete.
+
+Why:
+
+- Password recovery needs a native callback now, but the Android release certificate SHA-256 fingerprint, Apple Team ID, iOS provisioning/entitlements, and domain association files are not available.
+- A custom scheme can be registered entirely in the existing Android/iOS projects and Supabase Redirect URL list without pretending HTTPS verification is complete.
+- Preserving explicit `PASSWORD_RECOVERY` state prevents Supabase's temporary recovery session from entering the normal signed-in app before a new password is set.
+
+Alternatives considered:
+
+- Continue browser-only recovery and ask the rider to return manually.
+- Immediately use an unverified HTTPS callback.
+- Add another shared-preferences package solely for the pending-recovery marker.
+- Treat every Supabase auth event as an ordinary auth refresh.
+
+Why rejected:
+
+- Browser-only recovery does not provide a coherent native reset experience.
+- Unverified HTTPS links may open the browser instead of the app and cannot be called production App Links/Universal Links without association proof.
+- `supabase_flutter` already exports a suitable local-storage adapter, so another dependency adds no useful capability.
+- Generic refresh handling loses the security-relevant distinction between recovery and ordinary sign-in.
+
+Trade-offs:
+
+- Custom schemes are not domain-verified and another installed application could theoretically claim the scheme; verified HTTPS links remain the production target.
+- Supabase PKCE recovery links fail if opened on another device, browser-only environment, or reinstalled app because the code verifier is local to the requesting installation.
+- The old `com.example.isoko_scooter` debug app can coexist with the renamed app until explicitly uninstalled.
+- Changing package/bundle identifiers affects future signing, store records, OAuth clients, notification credentials, and any platform-specific service configuration.
+
+## Decision: Separate Batch Shipment from Rwanda Field Activation Under Schedule Pressure
+
+Decision:
+
+- An advance complete-bike shipment is not required to test the cellular lock because the lock has its own battery and modem; prefer factory bench testing or express shipment of a loose production lock/module.
+- If no advance hardware can reach Rwanda within the sub-one-month schedule, allow the full batch to ship only after minimum China bench, compatibility, and offline-recovery evidence is complete.
+- Treat arrival in Rwanda and permission to deploy to workers as separate gates. Test one accessible unit from the arrived batch on the real Rwanda network before activating the rest, then release units in controlled groups.
+
+Why:
+
+- Waiting for a separate complete scooter would threaten the schedule.
+- Unconditionally deploying every unit would expose the whole fleet to an unproven APN, LTE-band, coverage, or recovery failure.
+- Factory testing can prove firmware, APN configuration, server connectivity, and wrong-APN local recovery, while first-arrival testing supplies the Rwanda-specific radio evidence China cannot provide.
+
+Alternatives considered:
+
+- Delay the entire shipment until an advance scooter completes Rwanda testing.
+- Ship and deploy the entire fleet without a local stop/go test.
+- Replace every installed SIM immediately before proving whether the factory/global SIM already has acceptable Rwanda roaming.
+
+Why rejected:
+
+- The first option conflicts with the stated delivery deadline.
+- The second concentrates avoidable operational risk across every vehicle.
+- The third adds physical and APN risk when the existing SIM may be a workable launch bridge.
+
+Trade-offs:
+
+- The batch may be physically in Rwanda before local carrier acceptance is complete, creating holding/logistics cost if the first unit fails.
+- China roaming tests and written band confirmation reduce but cannot eliminate Rwanda coverage risk.
+- A factory/global roaming SIM may accelerate launch but can increase data cost or have different coverage/latency; obtain provider evidence before relying on it.
+
+## Decision: Use Native Mapbox and Geolocator for the Rider Map Foundation
+
+Decision:
+
+- Use `mapbox_maps_flutter` 2.27.0 for Android/iOS map rendering and `geolocator` 14.0.2 for foreground phone location/permission state.
+- Keep phone location behind a testable project-owned service/controller instead of calling Geolocator directly from screens.
+- Show no synthetic scooter markers; live markers wait for a protected rider-safe discovery contract and validated lock coordinates.
+
+Why:
+
+- Mapbox fits the planned parking zones, custom fleet layers, and branded map styling.
+- The project already reserved Mapbox runtime configuration.
+- Geolocator provides the required permission, service, acquisition, and settings behavior across both mobile platforms.
+- A project-owned boundary keeps platform APIs out of presentation logic and permits deterministic tests.
+
+Alternatives considered:
+
+- Public OpenStreetMap raster tiles through a Flutter map package.
+- Google Maps.
+- Static/fake map artwork until discovery exists.
+
+Why rejected:
+
+- Public OSM tile servers are not a production fleet tile service and would require a provider/hosting policy.
+- Google Maps would add a second vendor decision while Mapbox was already planned and better matches future custom fleet styling.
+- A fake map would misrepresent product readiness and cannot prove real permission/location behavior.
+
+Trade-offs:
+
+- Stable Mapbox 2.27 is Android/iOS only; current web/desktop builds receive an explicit unavailable state.
+- Mapbox requires a public token, account/billing controls, native physical-device tests, Android SDK 21+, and iOS 14+.
+- Live scooter value remains limited until the backend discovery API and lock GPS validation are complete.
+
+## Decision: Do Not Use Base-Station Positioning or Treat nRF Toolbox as Rider Authorization
+
+Decision:
+
+- Do not implement the factory-discontinued cellular base-station positioning fallback.
+- Treat nRF Toolbox as technician-only local maintenance/configuration unless the factory explicitly supplies and the project approves a complete secure rider BLE protocol.
+- Continue normal rider control architecture through Supabase identity, trusted backend ride authorization, and the lock's 4G TCP channel.
+
+Why:
+
+- Factory reports base-station accuracy worse than 500 m, Quectel fees, uncertain foreign-network support, and discontinuation.
+- nRF Toolbox is a generic BLE utility. Its name does not define authentication, encryption, replay resistance, per-lock keys, packet formats, or rider entitlement.
+- Exposing APN/server configuration or a fixed lock password to riders would create fleet-takeover and outage risk.
+
+Alternatives considered:
+
+- Display an approximate indoor base-station point.
+- Add nRF Toolbox-style BLE operations directly to the rider app immediately.
+- Conflate rider phone location with missing scooter location.
+
+Why rejected:
+
+- A 500+ m point is misleading for finding/ending a scooter ride and is not reliably available in Rwanda.
+- BLE behavior cannot be safely implemented without UUIDs, protocol packets, authentication, keys, firmware evidence, error/recovery semantics, and an approved threat model.
+- The phone and lock are separate physical devices and their coordinates are not interchangeable.
+
+Trade-offs:
+
+- Indoor scooter location may be unavailable; the UI must communicate that honestly.
+- Technicians may depend on a separate factory tool until a secured ISOKO maintenance product is deliberately designed.
+- Factory protocol clarification remains a schedule dependency.
+
 # Problems Encountered
 
 Historical problems are never deleted from this section.
+
+## Rider Profiles Were Initially Implemented in the Wrong Database
+
+Description:
+
+- The first Supabase auth slice used Supabase only for identity while persisting rider profiles in VPS PostgreSQL through `/me/bootstrap`.
+
+Symptoms:
+
+- Prisma gained rider `User`, `Trip`, and `RideSession` ownership.
+- Flutter depended on Fastify for simple current-profile loading.
+- Deployment instructions proposed a VPS rider-profile schema migration.
+
+Root cause:
+
+- The initial plan assumed a later whole application-database move to Supabase. The project owner then clarified the permanent boundary: Supabase must own everything rider/user-related, while VPS PostgreSQL must contain only scooter/admin operational data.
+
+Investigation:
+
+- Audited Prisma models, `/me` routes/services/repositories, Flutter account loading, deployment guidance, and all permanent-memory claims.
+- Compared simple owner-row access with trusted cross-system actions such as reservation, payment, and physical lock commands.
+
+Final solution:
+
+- Removed the undeployed VPS `/me` route, rider profile service/repositories/tests, and manual profile SQL.
+- Removed `User`, `Trip`, and `RideSession` from the local Prisma schema and made `Admin` standalone.
+- Added Supabase `profiles` and `user_preferences` with Auth trigger/backfill, strict RLS/column grants, and private avatar Storage.
+- Changed Flutter to load profile/preferences directly from Supabase under RLS.
+- Retained Fastify token verification only as a foundation for future trusted scooter/ride APIs.
+- Explicitly prohibited destructive `prisma db push`; production legacy tables must be audited/backed up before any cleanup.
+
+Lessons learned:
+
+- Authentication provider choice and application-data ownership are separate decisions and must both be explicit before persistence code is written.
+- Simple user-owned data fits direct Supabase RLS; physical command authorization requires a trusted service boundary.
+- Correct an architectural mismatch before deployment, even if the intermediate implementation already passes tests.
+
+May recur:
+
+- Yes, when designing rides/payments that span rider-owned state and VPS device evidence. Every new table must be assigned to an ownership domain before implementation.
 
 ## TypeScript Built the Wrong Output Path
 
@@ -2882,6 +3358,333 @@ May recur:
 
 - Yes, unless future setup instructions distinguish public and privileged values before requesting or sharing them.
 
+## Rwanda SIM Replacement Was Initially Framed as a Simple Configuration Question
+
+Description:
+
+- Client asked whether a new SIM could be configured locally in Rwanda after discussing replacement with the factory.
+
+Symptoms/risk:
+
+- A simple "yes" could imply that staff can open the lock, insert any local SIM, and configure it with the current app/dashboard.
+- An incorrect replacement/APN can leave the lock offline with no remote recovery path.
+
+Root cause:
+
+- SIM activation, physical replacement, modem band compatibility, APN configuration, and server redirection are separate concerns.
+- Manufacturer answers confirmed technical possibility but also confirmed that Bluetooth APN configuration still needs development.
+- Exact Quectel module model and supported bands were not supplied.
+
+Investigation:
+
+- Reviewed the new manufacturer Q&A, existing 4G protocol documents, BLE UUID information, CCID behavior, and current backend command registry.
+- Confirmed that the reviewed protocol documents do not contain the claimed remote domain-change command format.
+- Confirmed that current ISOKO software has no APN or server-address configuration feature.
+
+Final solution:
+
+- Classify Rwanda SIM replacement as conditional and not yet self-service.
+- Require the exact modem model/bands, physical replacement procedure, carrier/APN selection, secured Bluetooth configuration protocol/tool, remote domain command details, persistence/read-back behavior, and end-to-end Rwanda testing.
+- Preserve the complete interpretation in `docs/manufacturer-follow-up-2026-07-26-sim-server-hardware.md`.
+
+Lessons learned:
+
+- Do not treat carrier activation and embedded-device APN configuration as the same task.
+- Always design a local recovery path before changing settings that can disconnect a remote device.
+- A module family/market description is not enough to prove network compatibility; exact model and bands matter.
+
+May recur:
+
+- Yes, whenever changing SIMs, carriers, APNs, server domains, ports, or modem hardware.
+
+## First Mobile Auth Slice Verification Friction
+
+Description:
+
+- Dependency installation and strict compile/validation checks exposed three local workflow issues while implementing Supabase rider auth.
+
+Symptoms:
+
+- `flutter pub add supabase_flutter` exceeded the command timeout even though it had already updated `pubspec.yaml` and `pubspec.lock` successfully.
+- TypeScript initially rejected `app.decorateRequest("rider", null)` because the augmented request type declared `rider` as non-nullable.
+- `npx prisma validate` initially failed with `P1012 Environment variable not found: DATABASE_URL`.
+
+Root causes:
+
+- Flutter dependency resolution/plugin generation took longer than the tool timeout.
+- Fastify request decorators require a safe primitive/null initial value, while the first declaration skipped the pre-authentication state.
+- The ignored local root `.env` intentionally contains only staged Supabase values, not the full backend database/JWT configuration.
+
+Investigation:
+
+- Inspected the pubspec diff and process list after timeout; the dependency and lockfile were complete and no stale Dart process remained.
+- Rebuilt TypeScript after each request-type correction.
+- Listed only local environment variable names/value lengths, without exposing values, and reran Prisma validation with a temporary non-secret dummy PostgreSQL URL.
+
+Final solution:
+
+- Kept the completed dependency update and verified it through Flutter analysis, widget test, and web build.
+- Declared `request.rider` as `RiderIdentity | null`, populated it only after Supabase verification, and added an explicit route-level non-null guard.
+- Preserved the intentionally partial ignored `.env`; documented that it cannot start the backend and validated the Prisma schema with a temporary process environment value.
+
+Lessons learned:
+
+- After a package-manager timeout, inspect artifacts before retrying and creating duplicate churn.
+- Authentication state types must represent the request before and after middleware.
+- Configuration-staging files should not be mistaken for complete local runtime configuration.
+
+May recur:
+
+- Package resolution may again exceed short command timeouts; local backend commands requiring `DATABASE_URL` will continue to fail until a complete local development environment is configured.
+
+## Corrected Flutter Test/Build Commands Stalled in the Tool Sandbox
+
+Description:
+
+- During final verification after moving profiles from VPS PostgreSQL to Supabase RLS, `dart format`, `flutter test`, `flutter build web`, and a debug APK build produced no useful output and did not finish within practical bounds.
+
+Symptoms:
+
+- `dart format` and `flutter test` reached their command timeouts silently.
+- The external-approval request for a Flutter test rerun was rejected because the automated approval reviewer itself reported an unsupported model, not because tests failed.
+- Web/APK builds remained silent; their child Dart/Gradle processes were explicitly stopped after cancellation so no background build was left running.
+- The cancelled Android build created `IsokoApp/android/.kotlin/`; a standard `/.kotlin` ignore rule was added. Automated cache deletion was rejected by the approval reviewer, so the harmless local cache may remain ignored on disk.
+- `flutter analyze` did run successfully outside the sandbox and reported no issues.
+
+Root cause:
+
+- Exact root cause is unresolved. The pattern is local tool/sandbox/Gradle process behavior rather than a reported Dart compilation or widget assertion failure.
+
+Final solution:
+
+- Stopped all Dart/Gradle processes started by the cancelled commands.
+- Relied on successful Flutter static analysis plus the earlier pre-correction eight-test/configured-web-build baseline, while explicitly marking corrected widget/build verification as not completed.
+- Did not claim a test pass from a silent timeout.
+
+Lessons learned:
+
+- Silent Flutter runner timeouts are not test failures or test successes; they require a normal local terminal rerun.
+- Always clean child Gradle/Dart processes after terminating a wrapper command.
+
+May recur:
+
+- Yes, in this managed execution environment. Rerun the documented commands directly in the user's PowerShell terminal.
+
+July 27 profile-work update:
+
+- Adding `image_picker` again appeared to time out during package resolution, but `pubspec.lock`, `.dart_tool/package_config.json`, the package graph, and generated plugin registrants all proved resolution had completed.
+- `flutter analyze` initially found only one `prefer_const_constructors` lint in the avatar initials widget; it was corrected and the rerun passed with no issues.
+- The focused `flutter test test/profile_screen_test.dart` sandbox run remained silent and timed out after 180 seconds. Its outside-sandbox approval was rejected only because the automated approval reviewer reported an unsupported model. The test file compiles under analysis, but no test execution pass is claimed.
+- Unlike the July 26 stalled build, `flutter build apk --debug --dart-define-from-file=env.local.json` completed successfully on July 27 and produced `build/app/outputs/flutter-apk/app-debug.apk`, proving the Android image-picker integration compiles.
+- The safe rule remains: inspect dependency artifacts after timeouts, never infer test success from silence, and use a normal local PowerShell test run when the managed runner cannot execute Flutter tests.
+
+## Recovery Widget Test Timed Out Without Results
+
+Description:
+
+- The focused password-recovery widget test was started after recovery and native callback implementation but did not finish in the managed execution environment.
+
+Symptoms:
+
+- `flutter test --no-pub test/auth_recovery_test.dart` produced no useful output and exceeded a 240-second timeout.
+- The process did not report a Dart compile error, failed assertion, or passing test count.
+
+Root cause:
+
+- Unresolved managed-runner/Flutter process behavior, consistent with earlier silent Flutter test stalls in this workspace. There is no evidence that the recovery feature itself caused the timeout.
+
+Investigation:
+
+- Verified the recovery test file through static analysis.
+- Ran full Flutter analysis successfully after fixing a deprecated auth-event reference and one missing `const`.
+- Built the configured Android debug APK successfully, proving the production app source and native package/callback configuration compile.
+- Did not repeatedly rerun the external test because the prior approval path failed in the execution environment.
+
+Final solution:
+
+- Record the test as not completed, neither passed nor failed.
+- Require a normal local PowerShell test run and physical-device acceptance before closing recovery verification.
+
+Lessons learned:
+
+- A silent process timeout is execution uncertainty, not an application assertion result.
+- Static analysis and an APK build are useful compile checks but do not replace widget execution or deep-link testing on an installed app.
+
+May recur:
+
+- Yes, while Flutter tests run through this managed environment. Use the documented normal-PowerShell commands when it does.
+
+## Native Recovery Link Was Tested in Flutter Web/Chrome
+
+Description:
+
+- A valid Supabase PKCE recovery URL redirected to `com.smstechnologieset.isoko://auth/callback`, but appeared to do nothing when manually pasted into Chrome while the Flutter app was being tested as a web app.
+
+Symptoms:
+
+- Chrome loaded the Supabase `/auth/v1/verify` URL but did not transition the Flutter Web app to the native reset-password screen.
+- The received URL had the expected `type=recovery` and native `redirect_to` structure.
+
+Root cause:
+
+- `com.smstechnologieset.isoko://auth/callback` is registered by the installed Android/iOS applications, not by a Flutter Web page running in Chrome.
+- Supabase PKCE stores the code verifier in the app/browser installation that requested recovery. A request begun in Flutter Web cannot be completed by an unrelated native installation, and a native request must be opened on that same native installation/device.
+- Browsers may also refuse or suppress manually typed/pasted external custom-scheme navigation; tapping the received email link is the intended native flow.
+
+Investigation:
+
+- Reviewed the supplied URL shape without preserving its one-time token.
+- Compared the `redirect_to` value with the Android intent filter and iOS URL-scheme registration.
+- Confirmed that the current implementation and acceptance guide target Android/iOS, while Flutter Web remains a development surface and has no dedicated HTTP recovery callback route.
+
+Final solution:
+
+- Test mobile recovery from an installed Android/iOS build: request the link inside that app and tap the email on the same device.
+- Use `adb shell am start` with the bare custom callback only to verify Android intent resolution, not to complete a real PKCE exchange.
+- If browser recovery becomes a product requirement, add a separate allow-listed HTTPS web callback and explicit Flutter Web callback handling rather than reusing the native scheme.
+- Request a fresh recovery email after exposing, pasting, reusing, or troubleshooting a one-time link.
+
+Lessons learned:
+
+- Native custom schemes and web callback URLs are separate platform contracts.
+- With PKCE, matching redirect configuration alone is insufficient; the requesting app/browser must retain the corresponding local verifier.
+- Always state the target test platform before diagnosing a link that appears inert.
+
+May recur:
+
+- Yes, whenever a native callback is tested from Flutter Web/Chrome or the recovery email is opened on another device/app installation.
+
+## Dart Analysis Finished but Telemetry Caused a Nonzero Process Exit
+
+Description:
+
+- The July 30 standalone Dart format/analyze command took unusually long and returned exit code 1 after the analyzer itself reported success.
+
+Symptoms:
+
+- Formatter completed.
+- Analyzer printed `No issues found!`.
+- A later `PathAccessException` referenced `C:\Users\imkin\AppData\Roaming\.dart-tool\dart-flutter-telemetry-session.json`.
+
+Root cause:
+
+- The managed workspace allows project writes but denied Dart's analytics/telemetry write outside the project.
+
+Investigation and solution:
+
+- Read the complete command output rather than treating exit code 1 as a source failure.
+- Recorded source analysis as clean and the telemetry exception as an environment limitation.
+- Future managed commands should suppress analytics or run with an allowed telemetry location; normal developer PowerShell is not expected to have this workspace restriction.
+
+Lessons learned:
+
+- Separate compiler/analyzer diagnostics from post-command telemetry failures.
+- Never claim test/build success solely from partial output or a timed-out process.
+
+May recur:
+
+- Yes, for Dart/Flutter commands in restricted runners that attempt analytics writes outside the workspace.
+
+## Debug APK Crashes on One Physical Android Phone While Emulator Map Renders
+
+Description:
+
+- On July 31 the owner reported that `app-debug.apk` repeatedly crashes on a physical phone, while the Android emulator appears to run the native map.
+
+Symptoms:
+
+- Emulator screenshot shows Mapbox, the phone-location puck, approximately 5 m accuracy, and the empty-scooter panel.
+- Emulator coordinate is near Amphitheatre Parkway/Google buildings in Mountain View.
+- Physical phone exits/crashes after installation; the exact point in the app journey is not yet recorded.
+
+Investigation:
+
+- Verified the APK had built successfully and all location-controller tests/static analysis passed.
+- Ran `adb devices -l`; only `emulator-5554` was attached. Therefore no physical-device Logcat, model, Android API, ABI, memory/GPU, or fatal exception was available.
+- Recognized the emulator coordinate as its standard simulated GPS location, which is unrelated to the physical crash.
+
+Root cause:
+
+- Unknown until the physical device fatal exception/native backtrace is captured. Plausible categories, not conclusions, include stale app data from an older installation, device/Android/GPU-specific native Mapbox behavior, or another startup/runtime exception.
+
+Current solution/status:
+
+- Fresh comparison APK built with public Mapbox token: size `244142875` bytes, SHA-256 `EA6387BCB6FB91EB7934029401DC70DFA68EABF1B2DF62A61C0BE9E752DFACF6`.
+- It installed/launched successfully on `emulator-5554`, remained alive as PID `29067`, and emitted no filtered AndroidRuntime/native fatal event after eight seconds.
+- Physical cause remains pending. Perform a full uninstall/clean install of that exact APK. If reproducible, enable USB debugging, authorize the computer, capture full `adb logcat`, and record phone model/Android version plus whether the crash occurs before permission, after permission, or when opening the map.
+- Do not change permission or Mapbox code based only on this symptom; location denial and missing token already have handled UI states.
+
+Lessons learned:
+
+- Emulator success proves compilation/basic x86_64 native integration but not compatibility with every physical Android device/GPU/ABI.
+- Emulator GPS is controlled test input, not evidence of real geolocation accuracy.
+
+May recur:
+
+- Yes, until the affected phone is identified and a physical-device acceptance matrix passes.
+
+## Factory Bluetooth Wording Could Be Misread as Replacing the APN
+
+Description:
+
+- Client said the team would use Bluetooth through nRF Toolbox "instead of APN configuration."
+
+Root cause:
+
+- The transport used to edit modem settings was conflated with the APN setting required for cellular data.
+
+Final interpretation:
+
+- The SIM still requires the correct APN. Bluetooth/nRF Toolbox can provide a local path to write or recover that setting when cellular connectivity is unavailable.
+- Required BLE profile, UUID, packet, authentication, key, firmware, persistence, and recovery details remain outstanding.
+
+Lessons learned:
+
+- Describe APN, BLE configuration transport, SIM plan, LTE compatibility, and backend connectivity as separate layers.
+- Do not infer a secure rider BLE feature from generic factory maintenance tooling.
+
+May recur:
+
+- Yes, until the factory supplies a complete final-firmware maintenance specification and acceptance evidence.
+
+## Sign-In Reused Password-Strength Error Wording
+
+Description:
+
+- A physical-phone sign-in attempt displayed `Choose a stronger password and try again.` even though the rider was trying to authenticate with an existing account.
+
+Symptoms:
+
+- The sign-in UI showed the error in a red message panel.
+- The emulator account/password had previously worked, so the message suggested a password-creation problem that did not belong in sign-in.
+
+Root cause:
+
+- `SupabaseAuthRepository.signIn` passed Supabase `AuthException` values through the general `_friendlyMessage` mapper.
+- That mapper intentionally returns password-strength wording for signup/recovery/password changes, but sign-in shared the same mapper and could receive a password-related server message.
+
+Investigation:
+
+- Reviewed `sign_in_screen.dart`: its local validator only rejects an empty password.
+- Traced `_submit` to `AuthRepository.signIn`, then to the shared Supabase error mapper.
+- Confirmed this was a client-side message-mapping problem, not evidence that the Supabase account password had been changed.
+
+Final solution:
+
+- Added `friendlySignInErrorMessage` and routed only sign-in failures through it.
+- Sign-in now uses neutral credential wording for password/credential failures, while preserving email-confirmation, rate-limit, and network guidance.
+- Kept stronger-password guidance for signup and password-change flows.
+- Added regression tests and rebuilt the Android APK.
+
+Lessons learned:
+
+- Authentication operations need operation-specific error copy; signup validation messages must not be reused for sign-in.
+- A misleading local error message should be traced before resetting a working account password.
+
+May recur:
+
+- No for the current sign-in mapper. A different misleading server message would require a new mapping test.
+
 # Known Issues
 
 ## Security
@@ -2890,7 +3693,7 @@ May recur:
 - Admin token in localStorage.
 - Tokens were shared during troubleshooting; rotate `JWT_SECRET` before production security sign-off.
 - The initial Supabase service-role key was pasted into chat. Treat it as compromised and rotate it before any production use.
-- The Supabase service-role/secret key must remain backend-only; Flutter receives only a publishable/anon key.
+- A Supabase service-role/secret key may exist only in a trusted server environment when a feature truly requires it; the current profile flow needs none. Flutter receives only a publishable/anon key.
 - Raw lock TCP is unencrypted because firmware supports plain TCP only.
 - Device identity is not cryptographically authenticated in Mode 1.
 - No MFA, revocation, audit logs, or fine-grained admin roles.
@@ -2907,6 +3710,8 @@ May recur:
 - Duplicate set grows for the life of a socket.
 - No database backup/restore process.
 - No external monitoring/alerts.
+- No implemented local recovery/configuration workflow for a lock with an incorrect SIM APN or server address.
+- Factory is preparing an nRF Toolbox Bluetooth workflow, but its exact role, UUIDs, protocol, authentication, read-back/persistence, offline recovery, and final firmware evidence are not yet supplied or accepted.
 
 ## Data/Product
 
@@ -2920,11 +3725,17 @@ May recur:
 - No public code stored in backend `Scooter`; dashboard falls back to device ID.
 - No confirmed production tamper event code or actionable tamper-notification workflow.
 - The manufacturer-confirmed battery/signal fix is local but not yet deployed. Until deployment and the next STATUS packet, production may continue showing the signal field as battery percentage and signal as unavailable.
-- Raw battery voltage and solar voltage are not persisted, and charging state is not modeled. The manufacturer's charging rule leaves the hysteresis band between `Vb` and `Vb + 10` ambiguous.
+- Raw battery voltage and solar voltage are not persisted, and charging state is not modeled. The rule is stateful hysteresis: enter at `solar >= battery + 10`, exit at `solar < battery`, retain prior state between thresholds, and use unknown before a threshold establishes state.
 - Signal is now captured as a raw value locally, but its units, valid range, unknown sentinel, and weak/critical thresholds remain unconfirmed.
 - No structured charging, network-quality, GPS-quality, mechanical-fault, parking/motion, Hall-sensor, or firmware-update status model.
 - Unlocking is not automatically blocked below 25%. This is intentional until ride policy, telemetry freshness, and physical command-error handling are designed together.
 - Non-success protocol ACK error codes are not yet converted into accurate command failures and operator/rider messages.
+- SIM replacement is physically difficult and not documented as a field-service procedure.
+- APN configuration is not implemented in the backend, admin web, or Flutter app.
+- Remote server-domain modification is claimed by the manufacturer but its packet format, security, persistence, rollback, and current-firmware behavior are not documented locally or implemented.
+- Exact Quectel modem model and LTE bands are unknown; Rwanda carrier compatibility is not yet proven.
+- Current per-lock Bluetooth password/key material is fixed. Dynamic per-ride Bluetooth credentials are not designed or implemented.
+- Cellular base-station positioning is explicitly unavailable/discontinued; lock locations require valid recent GPS and must otherwise be stale/unavailable.
 
 ## Admin Dashboard
 
@@ -2939,18 +3750,28 @@ May recur:
 
 ## Flutter
 
-- Mostly mock data/navigation.
-- No real authentication.
-- No permissions/packages for camera/location.
-- No Mapbox.
+- Auth/profile entry and phone location/native map foundation are real; scooter markers/list data, ride, payment, history, and most account content remain mock data/navigation.
+- Supabase migration plus one confirmed signup/sign-in/sign-out proof passed July 27, 2026; two-user RLS isolation and real avatar Storage proof remain pending.
+- Password recovery and custom-scheme routing are implemented locally, but Supabase Redirect URL configuration and physical Android/iOS same-device, cold-start, expired/reused-link acceptance remain pending.
+- The custom callback is not domain-verified. Production HTTPS App Links/Universal Links require the Android release-signing fingerprint, Apple Team ID, hosted association files, entitlements, and new signed builds.
+- Supabase PKCE recovery must be opened on the same app installation/device that requested it; another device or a reinstalled app lacks the code verifier and should show a safe error.
+- Flutter Web/Chrome cannot consume the current native custom-scheme callback. Web recovery would require a separate HTTP(S) Redirect URL and callback route; it is not part of the current mobile acceptance scope.
+- Avatar upload/edit and profile details/password UI are implemented locally; real-device persistence/confirmation testing is pending. Preference edit UI remains pending.
+- Owner-versus-other-user RLS behavior still needs an integration test with two real test riders after the migration is applied.
+- Foreground phone location and Mapbox are installed/implemented but still need a real public Mapbox token and Android/iOS physical-device acceptance. No background location is requested.
+- Camera permission/scanner package remains absent.
 - No payment SDKs.
 - No backend discovery by public code.
-- Default API URL is obsolete HTTP IP and must be changed to HTTPS or supplied by dart define.
+- Default API URL is the production HTTPS API. Supabase URL/key must be supplied with `--dart-define-from-file`.
+- `MAPBOX_ACCESS_TOKEN` must also be supplied through generated public runtime config before the native map can load. Never put a Mapbox secret token in Flutter.
 - Empty QR screen file.
 - Duplicate old/new screen implementations.
 - Admin code remains but route is inactive.
-- Placeholder Android application ID and debug release signing.
-- Missing iOS camera/location usage descriptions.
+- Android/iOS identity is `com.smstechnologieset.isoko`, but Android release signing remains debug-only and iOS production signing/provisioning is not configured.
+- The old `com.example.isoko_scooter` debug installation may coexist on a test device until uninstalled.
+- iOS photo-library and foreground-location usage text exist; camera usage text remains missing.
+- The current iOS directory has no `Podfile`; verify/regenerate the iOS Flutter platform on the approved Mac before first CocoaPods/Xcode acceptance.
+- The July 31 debug APK crashes on one reported physical phone even though the emulator renders Mapbox. Physical-device Logcat/root cause and a representative Android device matrix are pending.
 - Default Flutter web metadata.
 - Some prototype copy contains spelling/grammar inconsistencies and an encoding artifact in tutorial text.
 
@@ -3020,14 +3841,16 @@ Declared and locked versions:
 - `cupertino_icons` 1.0.8: iOS-style icons.
 - `flutter_lints` 3.0.2: Dart lint baseline.
 - `flutter_test`: widget/unit testing.
+- `supabase_flutter` 2.16.0: Supabase Auth, persisted sessions/token refresh, RLS-protected Data API access, and Storage client foundation.
+- `supabase_flutter` also supplies the exported shared-preferences local-storage adapter used for the password-recovery pending marker; no separate persistence dependency was added.
+- `image_picker` 1.2.2: cross-platform rider avatar selection from the device photo library; the app reads selected bytes and applies its own JPEG/PNG/WebP and 5 MB validation before private Supabase upload.
+- `geolocator` 14.0.2: foreground Android/iOS phone permission, service-state, current-position, and settings access used by the location controller.
+- `mapbox_maps_flutter` 2.27.0: official native Mapbox v11 map, camera, style, ornaments, and phone-location puck for Android/iOS. Requires Android SDK 21+, iOS 14+, and a public runtime token.
 
 Not yet installed but expected later:
 
-- Mapbox native Flutter package.
 - Camera/QR scanner.
-- Location/permission package.
 - Secure storage.
-- `supabase_flutter` for rider authentication and session management.
 - Additional OAuth/OTP provider dependencies only if required beyond Supabase's Flutter SDK.
 - Payment provider SDKs.
 - Realtime transport if chosen.
@@ -3042,16 +3865,18 @@ Not yet installed but expected later:
 - Let's Encrypt: API TLS certificate.
 - Google Fonts: admin web/Flutter font delivery or font package behavior.
 - Manufacturer cellular network/SIM: lock connectivity.
-- Supabase: project provisioned July 22, 2026 for future Auth and PostgreSQL; no runtime integration yet.
+- Supabase: rider Auth plus the permanent rider/user PostgreSQL and Storage domain. The user-foundation migration was applied successfully and one confirmed rider auth flow was proven July 27, 2026.
+- Mapbox: native rider-map SDK is integrated locally; production account token/billing controls and physical-device acceptance remain pending.
 
 Future planned external integrations:
 
-- Mapbox.
 - MTN Mobile Money.
 - Airtel Money.
 - Stripe/card processing.
 - SMS/OTP provider.
 - Google and Apple auth.
+- Google Play Console and Play App Signing for Android distribution.
+- Apple Developer Program, App Store Connect, TestFlight, and macOS/Xcode or approved macOS CI for iOS signing/distribution.
 
 # Configuration
 
@@ -3066,6 +3891,11 @@ Future planned external integrations:
 - `TCP_PORT`: lock listener port.
 - `DATABASE_URL`: PostgreSQL connection.
 - `JWT_SECRET`: minimum 32 characters.
+- `SUPABASE_URL`: rider identity provider project URL; optional in Fastify until a rider-protected backend route is deployed.
+- `SUPABASE_PUBLISHABLE_KEY`: preferred public key used by Fastify when validating a rider through Supabase Auth.
+- `SUPABASE_ANON_KEY`: legacy public-key fallback during Supabase key-format transition.
+- `AUTH_REDIRECT_URL`: public native Supabase callback, defaulting to `com.smstechnologieset.isoko://auth/callback`.
+- `MAPBOX_ACCESS_TOKEN`: public map-rendering token copied into ignored Flutter runtime config; never use a Mapbox secret/account-management token in the app.
 - `TCP_MAX_FRAME_BYTES`: protects frame buffer from unbounded packet size.
 - `HEARTBEAT_TIMEOUT_MS`: socket stale threshold, default 180000.
 - `COMMAND_TIMEOUT_MS`: direct ACK wait, default 25000.
@@ -3086,13 +3916,15 @@ Future planned external integrations:
 - `PROTOCOL_AUTH_FLOW`: register-version for Mode 1.
 - `PROTOCOL_REGISTER_ACK_PAYLOAD`: `pubbike`.
 
-The tracked example has not yet been updated with Supabase placeholders. The ignored local root `.env` currently stages:
+The tracked example now includes Supabase public-key, auth callback, and public Mapbox-token placeholders. The ignored local root `.env` currently stages:
 
 - `SUPABASE_URL`.
 - `SUPABASE_ANON_KEY`.
 - `SUPABASE_SERVICE_ROLE_KEY`.
 
-Before implementation, prefer naming the public Flutter value `SUPABASE_PUBLISHABLE_KEY` and the backend-only privileged value `SUPABASE_SECRET_KEY` when the project has migrated to Supabase's newer key format.
+No configured `MAPBOX_ACCESS_TOKEN` was found at the start of the July 30 map slice. Add a public token locally and rerun `npm run mobile:env`; never commit the generated `IsokoApp/env.local.json`.
+
+The code prefers `SUPABASE_PUBLISHABLE_KEY` and accepts `SUPABASE_ANON_KEY` as a legacy public fallback. No backend-only privileged Supabase key is needed for token verification or Flutter's RLS profile/preferences access. The exposed local service-role key must be rotated and may be removed from root `.env` unless a future trusted server operation explicitly requires it.
 
 ## `tsconfig.json`
 
@@ -3142,6 +3974,9 @@ Build process:
 `AppConfig` dart defines:
 
 - `API_BASE_URL`.
+- `AUTH_REDIRECT_URL`, default `com.smstechnologieset.isoko://auth/callback`.
+- `SUPABASE_URL`.
+- `SUPABASE_PUBLISHABLE_KEY` preferred, or `SUPABASE_ANON_KEY` legacy fallback.
 - `MAPBOX_ACCESS_TOKEN`.
 
 Product constants:
@@ -3151,9 +3986,23 @@ Product constants:
 - Primary currency `RWF`.
 - Supported currencies `RWF`, `USD`.
 
-Required future change:
+Current default API URL is `https://api.smstechnologieset.com`. `IsokoApp/env.example.json` documents the safe public build configuration and ignored `env.local.json` holds the local values. `main.dart` sets the Mapbox token before constructing maps only on Android/iOS; missing token and unsupported-platform states remain explicit.
 
-- Default API URL should become `https://api.smstechnologieset.com` before production integration.
+Mobile identity and callback configuration:
+
+- Android namespace/application ID: `com.smstechnologieset.isoko`.
+- iOS Runner bundle ID: `com.smstechnologieset.isoko`; test bundle IDs use the same prefix.
+- Android manifest and iOS `CFBundleURLTypes` accept `com.smstechnologieset.isoko://auth/callback`.
+- Supabase Authentication Redirect URLs must include that exact callback before Forgot Password acceptance testing.
+- Planned verified callback: `https://app.smstechnologieset.com/auth/callback`; do not activate it until the association/signing checklist in `docs/mobile-auth-links.md` is complete.
+
+Profile media configuration:
+
+- Supabase bucket ID/name: `avatars`; it is private, limited to 5 MB, and permits JPEG, PNG, and WebP only.
+- Storage object convention: `<auth-user-uuid>/avatar-<microsecond-timestamp>.<extension>`.
+- Flutter signed URL lifetime: 24 hours; the provider is invalidated after avatar mutation.
+- iOS declares `NSPhotoLibraryUsageDescription`. The current picker uses gallery/library only, so no camera capture permission was added.
+- Android uses the platform picker supplied through `image_picker`; no broad storage permission is added.
 
 ## CORS
 
@@ -3226,6 +4075,8 @@ Future minimum CI:
 - Keep API details in data classes, not widgets.
 - Use domain parsers such as `ScooterQrPayload`.
 - Use `--dart-define` for environment-dependent values.
+- Keep rider credential mutations in Supabase Auth and owner-row/media mutations behind repository methods; widgets must not construct raw Data API or Storage requests.
+- For private media, validate owner paths, size, and MIME type in both schema/bucket policy and application code, then render through signed URLs with a non-network fallback.
 
 ## Testing
 
@@ -3243,6 +4094,8 @@ Current Flutter tests:
 - Initial sign-in screen.
 - QR payload parsing.
 - Admin fleet payload and seed fallback.
+- Auth signup/sign-in/sign-out and account setup behavior.
+- Profile name/email and current-password/new-password widget interactions in `test/profile_screen_test.dart`.
 
 Missing tests:
 
@@ -3253,7 +4106,7 @@ Missing tests:
 - Real TCP end-to-end.
 - Deployment smoke test.
 - Admin browser tests.
-- Flutter real network/auth/ride flows.
+- Flutter real network/profile/avatar/ride flows and two-user Supabase RLS/Storage isolation.
 
 ## Practices Intentionally Avoided
 
@@ -3341,6 +4194,7 @@ Important changes:
 
 - Added build/dev/test/Prisma/simulator scripts.
 - Added `admin:token`.
+- July 26, 2026: added `mobile:env` to safely generate ignored Flutter public config from the root `.env`.
 
 ### `tsconfig.json`
 
@@ -3362,6 +4216,7 @@ Important changes:
 
 - Updated from uncertain protocol settings to manufacturer-confirmed defaults.
 - Added CORS, heartbeat, retry, and protocol policy options.
+- July 27-29, 2026: added public `AUTH_REDIRECT_URL` with the current native callback default.
 
 ### `ecosystem.config.cjs`
 
@@ -3379,6 +4234,38 @@ Important history:
 
 - Initial broad schema anticipated users, admins, fleet, telemetry, commands, rides, locations, and audits.
 - Only device/command portions are actively used today.
+- July 26, 2026: an intermediate implementation added Supabase-linked rider fields, then the owner clarified that all user data belongs in Supabase.
+- July 26, 2026 correction: removed `User`, `Trip`, and `RideSession`; made `Admin` standalone; kept only scooter/admin operational models. This local schema change has not been applied to production and must not be forced with destructive `db push`.
+
+### Superseded `prisma/manual-migrations/20260726_supabase_rider_profiles.sql`
+
+History:
+
+- Created during the rejected intermediate VPS-profile design.
+- Removed before deployment when Supabase became the permanent rider-data store.
+
+Constraint:
+
+- It must never be applied. Legacy VPS tables require a separate future inventory/backup/cleanup migration.
+
+### `supabase/migrations/202607260001_user_foundation.sql`
+
+Purpose:
+
+- Idempotent Auth-linked rider profiles/preferences, trigger/backfill, `updated_at` maintenance, strict RLS/column grants, and private owner-folder avatar Storage.
+
+### `supabase/README.md`
+
+Purpose:
+
+- Supabase directory conventions, data ownership boundary, migration application, and security reminders.
+
+### `scripts/create-flutter-env.mjs`
+
+Purpose:
+
+- Read root `.env` and write ignored `IsokoApp/env.local.json` with only public Flutter values. It intentionally excludes every service-role/secret value.
+- July 27-29, 2026: began copying/defaulting `AUTH_REDIRECT_URL` alongside the API and Supabase public values.
 
 ### `src/main.ts`
 
@@ -3396,6 +4283,7 @@ Important history:
 
 - Manufacturer answers changed defaults to the current G168 profile.
 - CORS supports comma-separated origins.
+- July 26, 2026: added paired Supabase URL plus preferred publishable/legacy anon public-key configuration.
 
 ### `src/api/server.ts`
 
@@ -3412,7 +4300,25 @@ Important history:
 
 Purpose:
 
-- JWT plugin, generic authenticate guard, admin role guard.
+- JWT plugin, legacy generic/custom-JWT guard, admin role guard, and separate Supabase rider guard.
+
+### Removed `src/api/routes/me.ts`
+
+History:
+
+- Briefly implemented in the intermediate VPS-profile design and removed before deployment. Profile/preferences access is direct through Supabase RLS.
+
+### `src/services/riderIdentityVerifier.ts`
+
+Purpose:
+
+- Validate rider access tokens against the configured Supabase Auth project and normalize only trusted identity fields.
+
+### Removed `src/services/userProfileService.ts` and VPS user-profile repositories
+
+History:
+
+- Briefly persisted Supabase identities into VPS PostgreSQL; removed before deployment after the permanent data ownership correction.
 
 ### `src/api/errorHandler.ts`
 
@@ -3573,13 +4479,20 @@ Limitation:
 
 Purpose:
 
-- Approval-gated plan for Supabase project security, Prisma/PostgreSQL migration, Fastify token verification, user profiles, Flutter authentication, protected rider APIs, production cutover, rollback, hardening, and later identity providers.
+- Current plan for Supabase-owned rider Auth/data/Storage, Flutter integration, trusted lock orchestration, and later account/ride/payment phases.
 
 Important history:
 
 - Created July 22, 2026 before implementation.
-- Intentionally preserves the current admin JWT and local production database during the first rider-auth slice.
+- Permanently preserves the current VPS scooter/admin database as a separate operational domain.
 - Explicitly forbids privileged Supabase keys in Flutter or tracked frontend files.
+- July 26, 2026: corrected the rejected whole-database/VPS-profile plan before deployment.
+
+### `docs/mobile-auth-deployment.md`
+
+Purpose:
+
+- Exact Supabase Dashboard/Auth/SQL/RLS/Storage setup, safe Flutter config generation, real-account proof, and later optional VPS verifier configuration.
 
 ### `docs/manufacturer-follow-up-2026-07-24.md`
 
@@ -3590,7 +4503,21 @@ Purpose:
 Important history:
 
 - Created alongside the local STATUS correction.
-- Separates confirmed behavior from unresolved signal units, charging hysteresis, tamper hardware, failed command packets, and firmware recovery details.
+- Separates confirmed behavior from unresolved signal units, tamper hardware, production failure-code validation, and firmware recovery details.
+- July 26, 2026: corrected charging interpretation to stateful hysteresis because the manufacturer supplied both entry and exit thresholds.
+
+### `docs/manufacturer-follow-up-2026-07-26-sim-server-hardware.md`
+
+Purpose:
+
+- Permanent record and operational interpretation of manufacturer answers about physical SIM replacement, APN configuration, remote server-domain changes, lock power, fixed unlock credentials, physical resistance, and the Quectel 4G Cat 1 module.
+
+Important history:
+
+- Created July 26, 2026 after the client asked whether replacement SIMs could be configured in Rwanda.
+- Establishes that local replacement is technically possible in principle but is not yet a proven self-service workflow.
+- Lists the factory deliverables and Rwanda carrier tests required before field replacement can be approved.
+- July 29, 2026: added a step-by-step, stop-gated Rwanda APN pilot covering prerequisites, baseline, independent SIM validation, APN-only configuration, read-back/persistence, reconnect and command checks, geographic/soak testing, deliberate wrong-APN recovery, and pass/fail criteria.
 
 ### `docs/protocol-clarifications.md`
 
@@ -3689,17 +4616,13 @@ Limitation:
 
 Purpose:
 
-- ProviderScope, system UI, MaterialApp.router.
+- Supabase initialization, fail-closed missing-configuration state, ProviderScope, system UI, and MaterialApp.router.
 
 ### `IsokoApp/lib/core/config/app_config.dart`
 
 Purpose:
 
-- API/Mapbox dart defines and Rwanda/currency constants.
-
-Important future change:
-
-- Replace obsolete default HTTP IP.
+- Production HTTPS API default, Supabase public dart defines, auth callback dart define, Mapbox dart define, and Rwanda/currency constants.
 
 ### `IsokoApp/lib/core/theme/app_theme.dart`
 
@@ -3716,6 +4639,8 @@ Purpose:
 Important history:
 
 - Admin route removed from active composition when dashboard became separate.
+- July 26, 2026: added session/email-verification redirects and auth-state refresh integration.
+- July 27-29, 2026: added auth initialization wait, recovery-first routing, and safe auth-link-error routing.
 
 ### `IsokoApp/lib/core/router/routes/*.dart`
 
@@ -3723,11 +4648,50 @@ Purpose:
 
 - Feature route groups.
 
+Important history:
+
+- July 27, 2026: `account_routes.dart` added the real `/profile` destination.
+- July 27-29, 2026: `auth_routes.dart` added `/forgot-password`, `/reset-password`, `/auth-loading`, and `/auth-link-error`.
+- July 30, 2026: `permission_routes.dart` activated `EnableLocationScreen`; `scooter_routes.dart` activated `ScooterMapScreen` for map/list while selectively retaining mock QR/unlock screens.
+
 ### `IsokoApp/lib/core/network/*`
 
 Purpose:
 
-- Conditional native/web JSON API clients, auth token provider, exceptions.
+- Conditional native/web JSON API clients, current Supabase session token attachment, and exceptions.
+
+### `IsokoApp/lib/features/auth/data/*`
+
+Purpose:
+
+- Supabase-backed auth repository, friendly auth failures, Riverpod provider, auth-event-aware router refresh notifier, and persisted recovery marker.
+
+Important history:
+
+- July 27-29, 2026: added reset-email/password-update methods, preserved typed Supabase auth events, and made password recovery survive cold-start routing through the existing Supabase shared-preferences adapter.
+- July 31, 2026: separated sign-in error wording from signup/password-change strength guidance so existing-account login failures use neutral credential copy.
+
+### `IsokoApp/test/auth_error_message_test.dart`
+
+Purpose:
+
+- Regression coverage for sign-in-specific authentication error messages.
+
+Important history:
+
+- Added July 31, 2026 after a physical-phone sign-in displayed the wrong password-strength message.
+
+### `IsokoApp/lib/features/account/*`
+
+Purpose:
+
+- Rider profile/preferences models, direct Supabase RLS repository/providers, account load/retry screen, reusable signed-avatar presentation, and functional profile editor.
+
+Important history:
+
+- July 26, 2026: added Auth-linked profile/preferences loading under RLS.
+- July 27, 2026: added name/email/password/avatar mutations; private signed URLs; owner-path, MIME, and size checks; replacement cleanup; `/profile`; and focused widget tests.
+- `profile_repository.dart` is the only profile mutation boundary. Auth credentials stay in Supabase Auth, profile columns stay in Supabase PostgreSQL, and avatar bytes stay in private Supabase Storage.
 
 ### `IsokoApp/lib/features/admin/domain/admin_dashboard.dart`
 
@@ -3754,11 +4718,12 @@ Important history:
 
 Purpose:
 
-- Current active design-faithful rider prototype.
+- Remaining design-faithful rider prototype screens for camera/QR, unlock journey, rides, payments, and secondary account content.
 
 History/limitation:
 
 - Consolidated many screens quickly; now too large for production maintenance.
+- July 27, 2026: the menu account header stopped using a hardcoded rider and now consumes shared profile/avatar state and opens `/profile`.
 
 ### `IsokoApp/lib/features/scooters/*`
 
@@ -3786,17 +4751,46 @@ Current status:
 
 Purpose:
 
-- Earlier feature-specific UI implementations.
+- Feature-specific auth, location, and map implementations.
 
 Current status:
 
-- Mostly superseded by active mock screens; retain until deliberate cleanup.
+- Auth signup/sign-in/check-email/forgot-password/reset-password/link-error/loading screens are active and functional.
+- July 30, 2026: location domain/data files added `DeviceLocation`, a testable `LocationService`, Geolocator adapter, `LocationState`, and `LocationController`. The active permission screen handles service/permission/settings/acquisition states and routes after a real phone fix.
+- July 30, 2026: the active map/list screen renders native Mapbox on Android/iOS, centers the phone, enables the location puck/accuracy ring, supports recentering, preserves legal ornaments, and has missing-token/platform/load/empty states. It intentionally has no fake scooter annotations.
+- Older unused location/map widgets still overlap the active implementations and should be cleaned up only after discovery/API behavior stabilizes.
 
 ### `IsokoApp/docs/implementation-decisions.md`
 
 Purpose:
 
 - Flutter product decisions and next integration phase.
+
+### `docs/mobile-auth-links.md`
+
+Purpose:
+
+- Exact Supabase Redirect URL setup, public config generation, Android/iOS recovery acceptance, later HTTPS association requirements, security behavior, and troubleshooting.
+
+### `docs/mobile-map-location.md`
+
+Purpose:
+
+- Public Mapbox token setup, native requirements, phone-versus-lock location boundary, permission-state architecture, physical-device acceptance, factory-discontinued base-station fallback, and remaining discovery work.
+
+### `docs/four-week-delivery-plan.md`
+
+Purpose:
+
+- Dated July 29-August 25 MVP delivery plan through signed Android/iOS builds, beta distribution, store submission, and staged production rollout.
+- Separates completed foundations from remaining rider, backend, hardware, infrastructure, and store work.
+- Defines Day-1 external inputs, Must Ship versus deferred scope, weekly exit gates, Play/App Store checklists, critical risks, and an honest definition of completion.
+
+Important constraints:
+
+- The plan requires client scope approval and immediate store-account/signing inputs.
+- iOS submission requires macOS/Xcode or an approved macOS CI path; Windows alone cannot produce and submit the iOS archive.
+- Apple/Google review timing and Rwanda radio acceptance remain external gates even when engineering work is complete.
 
 ### `IsokoApp/design/screens/*`
 
@@ -3810,55 +4804,172 @@ Purpose:
 
 - Flutter configuration and exact dependencies.
 
+Important history:
+
+- July 26, 2026: added `supabase_flutter` 2.16.0 and generated its platform plugin registrations.
+- July 27, 2026: added `image_picker` 1.2.2 and generated Android/iOS/desktop/web plugin registration changes.
+- July 30, 2026: added `mapbox_maps_flutter` 2.27.0 and `geolocator` 14.0.2 plus transitive native/platform dependencies.
+
+### `IsokoApp/env.example.json`
+
+Purpose:
+
+- Safe public template for `--dart-define-from-file`; populated `env.local.json` is Git-ignored.
+- `npm run mobile:env` generates the populated file from root `.env` without copying the service-role key.
+- July 27-29, 2026: added `AUTH_REDIRECT_URL` to the public example.
+- July 30, 2026: added a public `MAPBOX_ACCESS_TOKEN` placeholder. The config generator already copies the value only when present.
+
 ### Platform projects
 
 Purpose:
 
 - Generated Flutter Android/iOS/web/desktop shells.
 
+Important history:
+
+- July 27, 2026: iOS `Info.plist` gained `NSPhotoLibraryUsageDescription` for rider avatar selection. Image picker does not currently request camera capture.
+- July 27-29, 2026: Android namespace/application ID and iOS bundle ID changed to `com.smstechnologieset.isoko`; Android `MainActivity` moved to the matching package; Android manifest and iOS URL types registered `com.smstechnologieset.isoko://auth/callback`.
+- July 30, 2026: Android main manifest gained internet/coarse/fine location declarations, Android minimum SDK is explicitly at least 21, iOS gained `NSLocationWhenInUseUsageDescription`, and all Xcode deployment targets rose from 13 to 14 for Mapbox.
+
 Future:
 
-- Configure real application IDs, signing, permissions, icons, metadata, deep links, and provider keys.
+- Configure production signing/provisioning, permissions, icons, metadata, provider keys, and verified HTTPS App Links/Universal Links. The package/bundle identifier itself is no longer a placeholder.
+- Configure camera declarations when the scanner is implemented and verify/regenerate the missing iOS `Podfile` on the approved Mac build path.
+
+### `IsokoApp/test/auth_recovery_test.dart`
+
+Purpose:
+
+- Widget coverage for non-enumerating reset requests, recovery-event routing/new-password submission, and safe invalid-link presentation.
+
+Verification status:
+
+- Compiles under successful Flutter analysis. Its managed-runner execution timed out silently after 240 seconds, so it is not recorded as passed or failed.
+
+### `IsokoApp/test/location_controller_test.dart`
+
+Purpose:
+
+- Unit coverage for granted location, disabled services, permission request, permanent denial, acquisition failure, last-fix preservation during refresh failure, and correct settings destination.
+
+Verification status:
+
+- All seven focused tests passed on July 31, 2026.
 
 # Current Objectives
+
+## Four-Week MVP and Store Delivery
+
+Target dates:
+
+- Engineering completion: August 25, 2026.
+- Requested public release: by August 26, 2026, subject to Apple/Google approval and required account/testing gates.
+
+Current plan:
+
+- Follow `docs/four-week-delivery-plan.md`.
+- Obtain written client approval of the proposed Must Ship/deferred scope on Day 1.
+- Run backend/data, Flutter, factory/APN, infrastructure, legal/store assets, and signing/review work in parallel.
+- Target the first signed internal builds early and first store submission by the end of Week 3, leaving Week 4 for review responses and release-blocking fixes.
+- Report engineering completion, store review status, and Rwanda field-activation status separately; do not describe the project as fully deployed while any is still pending.
+
+Immediate external blockers:
+
+- Verified Google Play Console organization account and confirmation of any required test track/duration.
+- Active Apple Developer organization membership, App Store Connect access, Apple Team ID, and macOS/Xcode or approved macOS CI.
+- MVP policy decisions: pricing, payment provider or pilot settlement, reservation, parking/end-ride, cancellation/refund, privacy, and retention.
+- Mapbox token, production SMTP, privacy/terms/support assets, test devices/testers, and store creative assets.
+- Factory modem bands, SIM/APN/roaming evidence, local recovery tool, GPS packets, firmware identity, and production device/public-code inventory.
+
+Scope rule:
+
+- No new launch feature is added after Day 1 without removing an equal or larger item. Authentication alone never authorizes mobile lock control.
+
+## Mobile Functionality: Real Map and Phone Location
+
+Status:
+
+- `mapbox_maps_flutter` 2.27.0 and `geolocator` 14.0.2 are installed and wired to active mobile routes.
+- Foreground permission, disabled-service, permanent-denial/settings, successful acquisition, refresh, and temporary failure states are implemented through a testable controller.
+- Android requires SDK 21+ and declares internet/coarse/fine location. iOS requires version 14+ and declares foreground location usage.
+- Mapbox renders only on Android/iOS. Web/desktop and missing-token/load failures are explicit.
+- The current map centers on the phone and intentionally shows no scooter markers because the rider-safe discovery API does not exist yet.
+- `flutter analyze --no-pub` passed with no issues on July 31, all seven focused controller tests passed, and the configured Android debug APK built successfully with the native Mapbox/Geolocator dependencies.
+
+Immediate map tasks:
+
+1. Connect the affected phone through authorized USB debugging, record model/Android/ABI and crash stage, clean reinstall, and capture full Logcat if the crash persists.
+2. Create/configure a restricted public Mapbox token and billing/usage alerts; place it in ignored root `.env` as `MAPBOX_ACCESS_TOKEN`.
+3. Run `npm.cmd run mobile:env`, then `flutter run --dart-define-from-file=env.local.json` on a physical Android device.
+4. Accept first-run, denied, permanently denied, disabled-service, return-from-settings, no-network, refresh, and recenter scenarios across representative physical devices.
+5. Implement the Supabase-rider-protected Fastify discovery endpoint with public scooter code, availability, safe battery, online state, and validated location only.
+6. Define lock GPS validity/freshness and add Mapbox scooter source/layers without substituting phone coordinates for lock coordinates.
+7. Repeat acceptance on a signed physical iPhone after macOS/Xcode, signing, and the missing `Podfile` are resolved.
+
+Location rule:
+
+- The rider phone location and scooter-lock GPS are separate facts. Factory-discontinued base-station positioning will not be implemented. Missing/invalid/old lock GPS must be unavailable or stale.
 
 ## Mobile Functionality: Supabase Auth and Database
 
 Status:
 
-- Planning complete; waiting for explicit implementation approval.
-- Local ignored `.env` contains the supplied Supabase project URL and legacy keys.
-- No production/backend/Flutter integration has started.
+- First code slice implemented locally after explicit approval on July 26, 2026 and corrected the same day after the owner clarified permanent data ownership.
+- Supabase is the permanent system of record for all rider/user data. VPS PostgreSQL is permanently scoped to scooters and admin operations.
+- Backend/Prisma verification and Flutter analysis are complete. A configured Android debug APK including profile media and recovery/native-link changes builds successfully.
+- Supabase SQL plus one real confirmed rider signup/sign-in/sign-out proof passed July 27, 2026. The project owner subsequently tested the menu/profile experience and reported it working well. Cross-user RLS/Storage isolation remains pending.
+- Functional profile editing is complete for the current slice: live menu identity, display name, Auth email/password changes, and private avatar choose/replace/remove.
+- Functional password recovery and custom-scheme callback routing are implemented locally. Supabase redirect allow-list setup and physical-device acceptance are the remaining release proof.
+- Android and iOS now use `com.smstechnologieset.isoko`; the callback is `com.smstechnologieset.isoko://auth/callback`. Production signing and verified HTTPS links remain pending.
 
-Approval-gated first slice:
+Completed account foundation:
 
-1. Rotate the exposed privileged Supabase key and replace legacy keys with publishable/secret keys where available.
-2. Add non-secret Supabase placeholders to tracked configuration.
-3. Add backend Supabase rider-token verification while preserving the working admin JWT.
-4. Add a user-profile repository/service and `/me/bootstrap` plus `GET /me`.
-5. Add `supabase_flutter`, auth/session providers, and API token forwarding.
-6. Replace mock email/password sign-up/sign-in/sign-out with functional flows.
-7. Prove one Flutter user can authenticate and call the protected backend.
+1. Added non-secret Supabase placeholders and ignored Flutter local build configuration.
+2. Added backend Supabase rider-token verification while preserving the working admin JWT.
+3. Added direct Flutter `ProfileRepository` reads for RLS-protected Supabase profile/preferences rows.
+4. Added `supabase_flutter`, persisted session providers, router guards, and API token forwarding.
+5. Replaced active mock signup/sign-in/sign-out with functional email/password flows and confirmation-pending/account-setup screens.
+6. Added an idempotent Supabase migration for profiles, preferences, trigger/backfill, RLS, grants, and private avatar storage.
+7. Removed local VPS rider models, routes, services, repositories, and the superseded VPS profile SQL from the implementation.
+8. Added `npm run mobile:env`, which safely generates Flutter's ignored public config from root `.env` without copying the service-role key.
+9. Added a functional profile route/menu header and direct Supabase name/email/password/avatar management.
+10. Added focused profile tests, clean Flutter analysis, and a successful configured Android debug build.
+11. Added Forgot Password, non-enumerating reset-email requests, Set New Password, loading, and safe invalid-link screens.
+12. Preserved typed Supabase auth events, gave recovery routing priority, and persisted same-installation pending recovery state for cold starts.
+13. Added the final-intent package/bundle ID and registered the current callback on Android and iOS.
+14. Added focused recovery tests and an auth-link deployment/acceptance guide.
+
+Immediate setup/proof tasks:
+
+1. In Supabase Authentication URL Configuration, add the exact Redirect URL `com.smstechnologieset.isoko://auth/callback`.
+2. On Android, prove Forgot Password, same-device email open, reset completion, old/new password behavior, reused/expired link safety, and cold-start recovery.
+3. Repeat on a signed physical iOS device when Apple signing is available.
+4. Create a second test rider and prove table RLS plus private avatar read/write/delete isolation in both directions.
+5. Run `flutter test test/auth_recovery_test.dart`, `flutter test test/profile_screen_test.dart`, and then `flutter test` from normal PowerShell because the managed runner timed out.
+6. Rotate the exposed privileged Supabase service-role key; this implementation does not need it.
+7. Commit/push the complete working tree without losing manufacturer documentation or unrelated changes.
+8. Add preference editing and finish signup/email-change callback acceptance.
+
+The next product-facing slice is live discovery: add a Supabase-rider-protected Fastify endpoint that returns rider-safe scooter availability/public code/validated-location fields, then feed it into the now-real map/list foundation. Do not return CCID, firmware maintenance fields, raw telemetry, or manufacturer device secrets. Do not enable mobile lock/unlock until reservation/active-ride authorization and command reconciliation exist.
 
 Do not yet:
 
-- Change production `DATABASE_URL`.
-- Migrate or delete the VPS-local PostgreSQL database.
+- Change production `DATABASE_URL` to Supabase; this is a permanent ownership boundary, not a pending cutover.
+- Drop legacy VPS user/ride tables with `prisma db push`; inventory and back them up before a reviewed cleanup migration.
 - Connect rider UI directly to arbitrary lock/maintenance commands.
 - Add the Supabase privileged key to Flutter or Vercel.
 
-Inputs required before database work:
+Inputs required for later rider features:
 
-- Supabase database password.
-- Direct and Supavisor session-pooler connection strings.
-- Confirmation that email/password is acceptable as the first provider.
-- Backup destination and rollback owner before production cutover.
+- Android release-signing fingerprint, Apple Team ID/provisioning, and ownership/hosting for `app.smstechnologieset.com` association files before verified HTTPS links.
+- SMTP, SMS/OTP, Mapbox, and payment provider credentials.
+- Approved reservation, pricing, parking, payment, cancellation, refund, privacy, and retention rules.
 
 The complete plan and acceptance criteria are in `docs/supabase-implementation-plan.md`.
 
 ## Factory Acceptance Testing
 
-Before the factory programs or ships the full production batch, run a documented acceptance test using real production firmware and more than one physical lock/SIM:
+Before factory release, run as much of this documented acceptance test as possible using real production firmware and more than one physical lock/SIM. Under the documented schedule exception, complete the minimum China evidence before shipment and reserve the Rwanda carrier/location portions as a mandatory first-arrival field-activation gate:
 
 1. Cold boot and power-cycle: verify REGISTER, hardware/software/firmware values, CCID reporting, heartbeat, online state, and clean reconnect.
 2. Repeated mechanics: run at least 20-50 lock/unlock cycles per test lock and compare direct ACK, physical state, heartbeat STATUS, and transaction RECORD.
@@ -3875,9 +4986,9 @@ Before the factory programs or ships the full production batch, run a documented
 Questions still requiring clearer factory answers or real production logs:
 
 - Exact hardware model and firmware build/revision installed in every shipped unit, plus change-control notification if it changes.
-- Raw two-way packets from the actual production lock for APPLY, successful and failed OPEN, successful and failed LOCK, RECORD with and without data, CCID, LOCA, UPDATE, tampering, and representative error codes.
+- Real hardware test captures for APPLY, successful and failed OPEN, successful and failed LOCK, RECORD with and without data, CCID, LOCA, UPDATE, tampering, and representative error codes. OPEN/LOCK packet formats and error definitions are already documented; captures are acceptance evidence, not missing protocol definitions.
 - Whether every new TCP connection always starts with REGISTER and whether CCID is always reported automatically after every boot/reconnect.
-- Exact signal-strength scale/range/thresholds, ALERT mapping, charging hysteresis behavior, and GPS coordinate system/units.
+- Exact signal-strength scale/range/thresholds, ALERT mapping, and GPS coordinate system/units.
 - Exact retry/duplicate behavior when an ACK is lost.
 - Complete firmware-update delivery and recovery process; `ACK^UPDATE:00` only confirms that the lock accepted or started the update.
 - How STOR, INTERSYNC, INTERARMLOC, SETRIDELOC, VOICE, and BLE are activated/configured and whether the factory recommends enabling any of them for launch. The manufacturer says all are available but rarely used.
@@ -3892,13 +5003,21 @@ Detailed capability questions for the factory:
   - Confirmed: battery chemistry is ternary lithium and capacity is 10,000 mAh.
   - Confirmed operational guidance: unlocking is generally disallowed below 25%, 4G becomes unstable around 5%, and stops at calculated 0%.
   - Confirmed charging entry: solar voltage is at least battery voltage plus 10 units. Confirmed exit: solar voltage is below battery voltage.
+  - Confirmed hysteresis interpretation: retain the previous charging state between the entry and exit thresholds; report unknown after restart until a threshold establishes state.
   - Still ask for nominal voltage, shutdown voltage under load, voltage sag/temperature/aging behavior, exact `FE` low-battery trigger, and whether low battery is also sent through ALERT.
-  - Clarify whether charging state is retained in the band where solar is above battery voltage but less than battery voltage plus 10, and how fully charged, battery fault, and solar/charger fault are represented.
+  - Ask how fully charged, battery fault, and solar/charger fault are represented.
   - Confirm normal reporting cadence and expected voltage behavior under motor load during lock/unlock.
 - Cellular signal and connectivity:
   - Define STATUS field 3 scale, units, valid range, unknown value, and recommended weak/critical thresholds. Do not assume it is a percentage.
-  - Confirm modem/LTE bands, APN requirements, roaming behavior, SIM data requirements, keepalive usage, and whether server hostname/IP/port can be changed remotely after production.
+  - Provide the exact Quectel Cat 1 module model and supported LTE bands; "European market" is not sufficient to prove Rwanda compatibility.
+  - Confirm Rwanda carrier/APN requirements, roaming behavior, SIM data requirements, SIM PIN behavior, keepalive usage, and whether server hostname/IP/port can be changed remotely after production.
   - Confirm reconnect and queued-data behavior after hours or days offline.
+- SIM/APN/server maintenance:
+  - Confirm whether the installed SIM is soldered, embedded, or in an internal holder; provide form factor, replacement procedure, tooling, sealing/warranty impact, and technician requirements.
+  - Provide the secured Bluetooth command/response format for reading and writing APN, APN credentials/authentication type, server domain/IP, and TCP port.
+  - Provide the existing remote command/ACK format for changing server domain/IP/port and define authentication, hostname limits, persistence, reboot behavior, rollback, and failure recovery.
+  - Confirm whether APN can also be modified remotely while the old connection works.
+  - Provide or approve a factory maintenance tool/workflow and test it with the intended Rwanda SIM and carrier before shipment.
 - GPS/location:
   - Confirmed: the lock uploads raw positioning-chip data; the server must derive movement, parked state, and drift-filtered location.
   - Confirm coordinate system/datum, validity handling, GPS time timezone, speed unit, direction unit, altitude unit, and behavior when GPS is invalid.
@@ -3934,29 +5053,31 @@ VOICE and BLE do not need to block the 4G launch unless they are explicitly in l
 
 ## Immediate, Highest Priority
 
-1. Keep the VPS stable while manufacturer testing runs.
+1. Work toward the stated sub-one-month delivery target while keeping the VPS stable and treating first-arrival Rwanda carrier acceptance as a field-activation gate, not a software task that can be falsely certified from China.
 2. Verify and deploy the July 24 battery/signal correction to the VPS and Vercel, then observe the next real STATUS packet.
 3. Execute the remaining factory acceptance plan above and capture real packet logs, firmware identifiers, errors, and deviations in this document and protocol tests.
-4. Obtain the signal scale/range/thresholds, production tamper-sensor bill of materials, real failed OPEN/LOCK packets, firmware interruption/recovery details, and charging hysteresis rule.
-5. Review and commit the simulator UPDATE ACK, telemetry corrections, tests, manufacturer follow-up document, Supabase plan, and `PROJECT_DATA.md`.
-6. Rotate `JWT_SECRET` before production/security handoff because temporary tokens were shared during troubleshooting.
-7. Verify PM2 systemd startup explicitly.
-8. Establish database backups before operational data becomes valuable.
-9. Add basic external HTTPS/TCP/process monitoring.
-10. Ask the manufacturer to verify `https://test.smstechnologieset.com/` from mainland China; if it remains unreliable, deploy a static admin-dashboard mirror through Nginx on the existing VPS.
+4. Obtain the exact Quectel model/bands, physical SIM replacement procedure, secured Bluetooth APN/server configuration protocol, and existing remote domain-change command format.
+5. Test the intended Rwanda carrier/SIM/APN on the exact production module before approving field replacement.
+6. Obtain the signal scale/range/thresholds, production tamper-sensor bill of materials, and firmware interruption/recovery details.
+7. Implement documented OPEN/LOCK error-code handling so non-`00` ACKs become failed commands with accurate messages.
+8. Configure and prove the mobile recovery callback, complete real-device profile/email/password/avatar checks, and complete two-user RLS/Storage isolation; never change the VPS `DATABASE_URL` for rider data.
+9. Rotate both the exposed Supabase service-role key and `JWT_SECRET` before production/security handoff.
+10. Verify PM2 systemd startup, establish database backups, and add basic external monitoring.
+11. Verify mainland-China access to `https://test.smstechnologieset.com/`; use a VPS-hosted dashboard mirror if needed.
 
 ## Short-Term
 
-1. Implement the approved first Supabase rider-auth slice.
-2. Establish Prisma migration history and a verified database backup before Supabase database cutover.
+1. Complete physical-device custom-scheme recovery/signup/email-change acceptance, then prepare verified HTTPS App Links/Universal Links when signing and association inputs exist.
+2. Establish Prisma migration history and a verified VPS PostgreSQL backup before further operational schema changes; there is no Supabase database cutover.
 3. Add proper admin authentication and remove manual token paste.
 4. Add dashboard polling/realtime freshness and command history.
 5. Add integration tests for API, database, socket manager, and real TCP flow.
 6. Add scooter public-code lookup.
-7. Implement persistent ride lifecycle and authorization.
+7. Implement persistent reservation/ride lifecycle and authorization before mobile lock commands.
 8. Add RECORD reconciliation for unlock reliability/billing.
-9. Update stale READMEs and Flutter API default.
-10. Clean up Flutter duplicate screen implementations as integration begins.
+9. Add preference editing and account deletion/export policy flows in Supabase.
+10. Update the encoding-stale Flutter README and other stale documentation.
+11. Clean up Flutter duplicate screen implementations as integration continues.
 
 ## Long-Term
 
@@ -4395,12 +5516,14 @@ Decisions:
 - Treat signal as raw protocol data until the manufacturer confirms units/range/thresholds.
 - Use below 25% for low-battery attention.
 - Do not yet hard-block unlock from stored battery percentage because telemetry may be stale and command-error handling is incomplete.
-- Do not add raw voltage/charging schema fields without a deliberate migration and a confirmed charging hysteresis rule.
+- Do not add raw voltage/charging schema fields without a deliberate migration.
+- July 26 correction: the manufacturer-supplied charging entry and exit thresholds are sufficient to define stateful hysteresis.
 
 Problems encountered:
 
 - The old parser read signal as battery percentage.
-- The manufacturer still did not define signal scale, charging hysteresis, exact tamper hardware in the production batch, real failure packets, or detailed firmware-update recovery.
+- At the time, signal scale, exact tamper hardware in the production batch, real failure test evidence, and detailed firmware-update recovery remained unavailable.
+- July 26 correction: OPEN/LOCK packet formats and error codes were already in the protocol document; real packets are useful for acceptance testing rather than protocol discovery.
 - The first Flutter analysis attempt timed out and left Dart processes running.
 
 Solutions implemented:
@@ -4429,9 +5552,278 @@ Recommended next step:
 
 - Deploy the telemetry correction, then run one real-lock heartbeat plus low/medium/high-voltage test evidence before continuing Supabase implementation.
 
-# Resume Context
+## Session Entry: July 26, 2026 - Rwanda SIM and Lock Configuration Assessment
 
-You are resuming the ISOKO scooter-lock project on or after Friday, July 24, 2026. Read this entire file before changing code or infrastructure.
+Date:
+
+- Sunday, July 26, 2026.
+
+Completed:
+
+- Reviewed the client's new manufacturer Q&A about SIM replacement, APN configuration, server-address changes, lock power, unlock credentials, physical security, and the cellular module.
+- Determined that a new SIM can technically be configured in Rwanda, but the current locks do not yet provide a proven self-service field workflow.
+- Separated mobile-operator SIM activation from smart-lock APN configuration.
+- Identified the offline-recovery problem: a lock with an incorrect replacement SIM/APN cannot receive a remote correction over 4G.
+- Confirmed that local APN recovery needs a secured Bluetooth maintenance protocol/tool from the factory.
+- Confirmed that remote server-domain modification is reportedly supported by firmware, but the exact command/ACK is missing from reviewed documents and is not implemented by ISOKO.
+- Confirmed that the internal lock battery powers lock/GPS/4G and the scooter battery only charges it.
+- Recorded that each lock currently has unique fixed password/key material and dynamic per-ride credentials would require new protocol design.
+- Recorded that physical resistance to removal is not equivalent to active tamper detection.
+- Identified the exact Quectel model and LTE bands as mandatory inputs before approving Rwanda carrier compatibility.
+- Corrected the earlier charging note: entry and exit thresholds define stateful hysteresis.
+- Clarified that documented OPEN/LOCK failure formats and error codes are sufficient for implementation; real failure packets remain acceptance-test evidence.
+
+Files modified:
+
+- `PROJECT_DATA.md`.
+- `docs/manufacturer-follow-up-2026-07-24.md`.
+
+File created:
+
+- `docs/manufacturer-follow-up-2026-07-26-sim-server-hardware.md`.
+
+Decisions:
+
+- Answer the client with a conditional yes, not an unconditional yes.
+- Do not approve arbitrary local SIM replacement until physical serviceability, exact modem bands, APN configuration, and Rwanda carrier testing are proven.
+- Keep APN/server configuration maintenance-only and unavailable to ordinary riders.
+- Require both remote configuration for healthy online locks and Bluetooth recovery for offline/misconfigured locks.
+- Do not approve the full China-to-Rwanda shipment until one production-representative unit passes real Rwanda network and server acceptance.
+
+Problems encountered:
+
+- Manufacturer supplied only a module family/market description, not the exact Quectel model.
+- Physical SIM construction and replacement impact remain undocumented.
+- The claimed remote domain command is not present in the reviewed protocol documents.
+
+Solutions:
+
+- Created a concrete factory deliverables list and nine-step Rwanda validation sequence.
+- Prepared a concise client-ready explanation that distinguishes present capability from future supported workflow.
+
+Remaining work:
+
+- Obtain exact module model/bands and test the intended Rwanda carrier/SIM/APN.
+- Obtain the physical replacement procedure and warranty/sealing implications.
+- Obtain or develop the secured Bluetooth APN/server configuration protocol.
+- Obtain and implement the remote domain/IP/port command.
+- Agree with the client/factory on a one-unit Rwanda pilot and full-shipment release gate.
+
+Recommended next step:
+
+- Ask the factory for the exact Quectel model number and the APN/server configuration packet specifications before selecting or installing a Rwanda replacement SIM.
+
+## Session Entry: July 26, 2026 - Functional Supabase Rider Authentication Foundation
+
+Historical status:
+
+- This entry records the first intermediate implementation exactly as it happened. Its VPS rider-profile persistence decision was superseded before deployment by the correction entry immediately below.
+
+Date:
+
+- Sunday, July 26, 2026.
+
+Completed:
+
+- Received explicit approval to begin making the Flutter rider app functional.
+- Reviewed the approval-gated Supabase plan and current Flutter/backend/database boundaries before editing.
+- Added `supabase_flutter` 2.16.0 and generated platform registrations.
+- Added ignored local Flutter public configuration plus a tracked placeholder template.
+- Initialized Supabase before app startup and added a fail-closed configuration screen.
+- Changed the Flutter default API URL to the production HTTPS domain.
+- Implemented a Supabase auth repository with email/password signup/sign-in, friendly errors, persistent/refreshed sessions, and local sign-out.
+- Replaced active mock auth route builders with real signup, sign-in, email-confirmation, and account-bootstrap screens.
+- Added auth-aware GoRouter redirects and a notifier tied to the Supabase auth-state stream.
+- Connected `ApiClient` Bearer tokens to the current Supabase session.
+- Added Flutter rider profile model, API adapter/provider, and idempotent bootstrap retry/error UI.
+- Wired Settings logout to the real auth repository.
+- Added backend Supabase configuration supporting the preferred publishable key and legacy public anon key.
+- Added `SupabaseRiderIdentityVerifier`, which validates access tokens through the configured Supabase Auth `/auth/v1/user` endpoint and requires authenticated audience/role plus a UUID subject.
+- Added a separate `authenticateRider` Fastify guard while leaving the working admin/custom JWT paths intact.
+- Added `POST /me/bootstrap`, `GET /me`, user-profile service/repository abstraction, and Prisma implementation.
+- Updated the Prisma `User` profile shape and added the explicit idempotent pilot SQL file.
+- Added backend auth/API tests and updated the Flutter widget test with an injected signed-out repository.
+- Added `docs/mobile-auth-deployment.md` and updated the Supabase plan/Flutter decisions/permanent memory.
+- Queried only Supabase's public Auth settings endpoint and confirmed HTTP 200, email enabled, signup enabled, and phone disabled.
+- Started a temporary Flutter web development server at `http://127.0.0.1:8081` using ignored `env.local.json`; port 8080 was already occupied by an unrelated local Apache `httpd` process, so it was left untouched.
+- Did not change the VPS, production database, Nginx, PM2, Vercel, lock TCP server, or production `DATABASE_URL`.
+
+Files created:
+
+- `src/services/riderIdentityVerifier.ts`.
+- `src/services/userProfileService.ts`.
+- `src/repositories/userProfileRepository.ts`.
+- `src/repositories/prismaUserProfileRepository.ts`.
+- `src/api/routes/me.ts`.
+- `tests/auth/supabaseRiderIdentityVerifier.test.ts`.
+- `tests/api/me.test.ts`.
+- `IsokoApp/test/auth_flow_test.dart`.
+- `prisma/manual-migrations/20260726_supabase_rider_profiles.sql`.
+- `IsokoApp/lib/features/auth/data/auth_repository.dart`.
+- `IsokoApp/lib/features/auth/data/providers.dart`.
+- `IsokoApp/lib/features/auth/presentation/screens/check_email_screen.dart`.
+- `IsokoApp/lib/features/account/domain/user_profile.dart`.
+- `IsokoApp/lib/features/account/data/profile_api.dart`.
+- `IsokoApp/lib/features/account/data/providers.dart`.
+- `IsokoApp/lib/features/account/presentation/screens/account_bootstrap_screen.dart`.
+- `IsokoApp/env.example.json`.
+- Ignored `IsokoApp/env.local.json` with public client configuration only.
+- `docs/mobile-auth-deployment.md`.
+
+Important modified files:
+
+- Backend composition/config/auth/error/routes and Prisma schema.
+- Flutter main/config/router/network/auth screens/Settings/dependencies/platform registrations/test.
+- `.env.example`, `.gitignore`, `docs/supabase-implementation-plan.md`, `IsokoApp/docs/implementation-decisions.md`, and `PROJECT_DATA.md`.
+- Preserved earlier uncommitted manufacturer documentation changes.
+
+Decisions:
+
+- Validate rider tokens through Supabase Auth initially rather than copying a signing secret or using service-role privilege.
+- Keep manual admin JWT and existing custom-JWT scooter skeletons unchanged during this first slice.
+- Keep profiles in VPS PostgreSQL and do not move production data during auth proof.
+- Use a manual reviewed pilot SQL file because no legitimate Prisma migration baseline exists yet.
+- Prefer Supabase publishable keys; accept the existing legacy public anon key temporarily.
+- Do not connect the rider UI to lock/maintenance routes before reservation/ride ownership authorization exists.
+
+Problems encountered and solutions:
+
+- `flutter pub add` exceeded its command timeout after successfully updating dependency files; inspected artifacts/processes and continued without a duplicate install.
+- Strict Fastify typing rejected a null-initialized non-null rider decorator; modeled pre-auth state as nullable and added an explicit route guard.
+- Initial Prisma validation lacked local `DATABASE_URL`; confirmed the root `.env` is intentionally partial and validated with a temporary process-only dummy URL.
+- Dart formatting touched unrelated historical files; restored content-identical files and retained only required auth/plugin changes. Some Git status entries may remain timestamp/line-ending noise even where `git hash-object` equals `HEAD`.
+- `IsokoApp/README.md` uses a legacy/non-UTF-8 encoding that `apply_patch` could not safely modify; its stale Firebase/frontend-only text remains technical debt.
+
+Verification completed:
+
+- `npm.cmd run prisma:generate`: passed.
+- `npm.cmd run build`: passed.
+- `npm.cmd test`: 4 files and 29 tests passed.
+- `flutter analyze`: no issues.
+- `flutter test`: 8 tests passed across 4 files, including signup-to-confirmation navigation.
+- `flutter build web --dart-define-from-file=env.local.json`: passed, including the WebAssembly dry run.
+- `npx.cmd prisma validate` with a temporary process-only URL: passed.
+- `git diff --check`: passed with expected LF-to-CRLF warnings only.
+- Privileged service-role key scan of tracked content returned no matches.
+
+Remaining work:
+
+- Rotate the service-role key previously exposed in conversation.
+- Commit/push this combined working tree.
+- Follow `docs/mobile-auth-deployment.md`: off-server backup, pull/build/test, apply profile SQL, configure only public Supabase values, restart PM2, and regress admin/physical lock.
+- Create/confirm/sign in a real test rider and prove profile persistence/session restoration/sign-out end to end.
+- Add password reset and mobile confirmation deep links.
+- Establish a proper Prisma migration baseline before more database evolution.
+- Implement reservation/ride authorization before mobile scooter controls.
+
+Recommended next step:
+
+- Review and commit the local slice, then perform the controlled VPS deployment with the user one step at a time and stop immediately if backup, migration, PM2, admin, or physical-lock regression checks fail.
+
+## Session Entry: July 26, 2026 - Supabase-Only Rider Data Correction
+
+Date:
+
+- Sunday, July 26, 2026.
+
+Completed:
+
+- Received the owner's explicit permanent architecture clarification: all rider/user data belongs in Supabase; VPS PostgreSQL is scooter/admin-only.
+- Audited the intermediate Prisma rider models, `/me` API, services/repositories/tests, Flutter account path, environment handling, deployment plan, implementation decisions, and permanent memory.
+- Removed the undeployed VPS rider-profile persistence implementation.
+- Refactored Flutter account setup to directly load `profiles` and `user_preferences` through the signed-in Supabase session and RLS.
+- Added `UserPreferences` and Riverpod current-profile/current-preferences state.
+- Added the idempotent Supabase user-foundation migration with profile/preferences tables, account-status enum, new-user trigger, existing-user backfill, updated timestamps, strict grants/RLS, avatar ownership constraint, and private Storage policies.
+- Added `supabase/README.md` documenting the ownership boundary and future migration convention.
+- Added `npm run mobile:env` plus `scripts/create-flutter-env.mjs`; it reads root `.env` and writes only public values to ignored `IsokoApp/env.local.json`.
+- Added `/.kotlin` to `IsokoApp/android/.gitignore` after the cancelled Gradle build created that generated cache.
+- Ran the generator successfully and verified the output contains only `API_BASE_URL`, `SUPABASE_URL`, and `SUPABASE_ANON_KEY`; it contains no service-role key.
+- Rewrote the Supabase plan, mobile setup guide, and Flutter decisions around the permanent two-database architecture.
+- Updated current-state, timeline, decisions, problems, known issues, configuration, file history, objectives, session history, and Resume Context in this permanent record.
+- Did not execute SQL remotely and did not change Supabase Dashboard settings, the VPS, production PostgreSQL, PM2, Nginx, DNS, Vercel, or any physical lock.
+
+Files created:
+
+- `supabase/migrations/202607260001_user_foundation.sql`.
+- `supabase/README.md`.
+- `scripts/create-flutter-env.mjs`.
+- `IsokoApp/lib/features/account/domain/user_preferences.dart`.
+- `IsokoApp/lib/features/account/data/profile_repository.dart` (replacement for the intermediate Fastify profile adapter).
+
+Files removed before deployment:
+
+- `src/api/routes/me.ts`.
+- `src/services/userProfileService.ts`.
+- `src/repositories/userProfileRepository.ts`.
+- `src/repositories/prismaUserProfileRepository.ts`.
+- `tests/api/me.test.ts`.
+- `prisma/manual-migrations/20260726_supabase_rider_profiles.sql`.
+- Intermediate `IsokoApp/lib/features/account/data/profile_api.dart`.
+
+Important modified files:
+
+- `prisma/schema.prisma`.
+- `src/api/server.ts`, `src/main.ts`, and retained Fastify Supabase verifier/auth/config files.
+- `package.json`.
+- `IsokoApp/android/.gitignore`.
+- Flutter account providers/bootstrap plus the broader auth/session implementation from the first slice.
+- `docs/mobile-auth-deployment.md`.
+- `docs/supabase-implementation-plan.md`.
+- `IsokoApp/docs/implementation-decisions.md`.
+- `PROJECT_DATA.md`.
+
+Decisions:
+
+- Supabase owns Auth and every rider-owned table/file now and in the future.
+- VPS PostgreSQL owns only hardware/admin operational data.
+- Direct RLS access is appropriate for simple own-profile/preferences operations.
+- Trusted Edge Functions or Fastify APIs are mandatory for reservation/payment/lock transitions.
+- Do not create speculative future tables until business, concurrency, retention, and authorization rules are approved.
+- Create only the private `avatars` bucket now; add other buckets with their features.
+- Do not expose or use the service-role key in Flutter. Rotate the key shared in conversation.
+- Never use a destructive Prisma `db push` to remove legacy production user/ride tables; inventory, backup, and review a future cleanup migration.
+
+Problems encountered and solutions:
+
+- The intermediate architecture put profiles in the wrong database. Corrected it before deployment and retained the rejected design as historical context.
+- Flutter cannot consume root `.env` directly through `--dart-define`. Added a safe generator that copies only public values into an ignored JSON file.
+- Root `.env` lacks `DATABASE_URL`, so standalone Prisma validation failed normally; reran with a temporary process-only dummy URL and it passed.
+- Managed Flutter format/test/build commands became silent or timed out. Stopped all child Dart/Gradle processes, recorded the limitation, and did not misreport them as passes.
+
+Verification completed:
+
+- `npm run mobile:env`: passed; public key names only and no service-role key in generated Flutter config.
+- `npx prisma format`: passed.
+- `npm run prisma:generate`: passed.
+- `npm run build`: passed.
+- `npm test`: 3 files and 27 tests passed. The previous two `/me` tests were intentionally removed with the rejected route.
+- `npx prisma validate` with a temporary process-only dummy `DATABASE_URL`: passed.
+- `flutter analyze`: no issues.
+- Tracked-content secret scan: passed; no service-role assignment or JWT-shaped secret was found.
+- `git diff --check`: passed with line-ending conversion warnings only.
+
+Verification not completed in the managed runner:
+
+- Corrected `flutter test` timed out without output; the external rerun request failed in the approval reviewer. The earlier pre-correction baseline remains eight passing Flutter tests.
+- Corrected configured web and debug APK builds were stopped after silent runner/Gradle behavior. The earlier configured web build passed before the profile-storage correction.
+- Supabase SQL/RLS/Storage integration testing awaits the owner running the migration and creating two real test riders.
+
+Remaining work:
+
+- Rotate the exposed Supabase service-role key.
+- Configure Supabase Auth URLs/email settings and run the user-foundation migration.
+- Verify schema/policies/bucket, then test signup/profile/preferences/session/sign-out with one rider and cross-user denial with a second rider.
+- Rerun `flutter test` and a configured mobile build directly in normal local PowerShell.
+- Commit/push the complete dirty tree without losing manufacturer documentation changes.
+- Continue password recovery/deep links/profile editing, then discovery/reservation/ride authorization before mobile lock controls.
+
+Recommended next step:
+
+- Follow `docs/mobile-auth-deployment.md` from the service-role rotation through the two-rider RLS proof, without making any VPS database change.
+
+# Superseded Resume Context (Before Rider Auth Implementation)
+
+You are resuming the ISOKO scooter-lock project on or after Sunday, July 26, 2026. Read this entire file before changing code or infrastructure.
 
 The current working product is a Node.js/Fastify/Prisma backend on a Contabo Ubuntu VPS, a raw TCP smart-lock server on port 7000, and a standalone static admin dashboard on Vercel. The API is `https://api.smstechnologieset.com`; dashboard URLs are `https://scooter-backend-nu.vercel.app/` and custom domain `https://test.smstechnologieset.com/`; the VPS IPv4 is `62.171.160.225`. The physical manufacturer lock has successfully registered and accepted lock/unlock commands, and the user reports all dashboard buttons working. Manufacturers are beginning thorough testing.
 
@@ -4452,7 +5844,7 @@ Critical protocol audit findings:
 - Battery conversion references: `340 -> 0%`, `365 -> 20%`, `376 -> 40%`, `388 -> 61%`, and `410 -> 100%`; values are rounded and clamped.
 - Manufacturer guidance: below 25% is low battery/unlock concern, connectivity is unstable around 5%, and 4G stops at calculated 0%.
 - Battery is 10,000 mAh ternary lithium.
-- Charging enters when solar voltage is at least battery voltage plus 10 and exits when solar voltage is below battery voltage. Intermediate-band behavior remains unknown.
+- Charging enters when solar voltage is at least battery voltage plus 10 and exits when solar voltage is below battery voltage. Retain the previous state between thresholds; use unknown if no prior state exists.
 - Signal scale/range/thresholds remain unknown, so clients display it without `%`.
 - Current code preserves but does not structure most GPS/LOCA details, ALERT codes, parking/Hall diagnostics, command error codes, or RECORD contents.
 - Any matching ACK currently resolves a command regardless of error code; future work must distinguish "device answered" from "mechanical action succeeded."
@@ -4460,6 +5852,21 @@ Critical protocol audit findings:
 - UPDATE ACK means accepted/started, not completed. Final firmware must be verified from a later REGISTER.
 - Offline records are usually retained but can be lost after a power/interference restart.
 - Detailed factory questions and test procedures are in Current Objectives.
+
+SIM/server/hardware findings:
+
+- Scooters/locks are currently in China, will operate in Rwanda, and remote software support is being developed from Ethiopia. Connectivity mistakes that leave a lock offline cannot be repaired remotely.
+- New SIM configuration in Rwanda is technically possible in principle but is not currently a proven self-service workflow.
+- The installed SIM is difficult to replace and its physical form/access/warranty impact are unknown.
+- A replacement requires the correct carrier APN. Current ISOKO software cannot read or write APN settings.
+- Manufacturer says secured Bluetooth protocol development is required for local APN/server configuration and recovery.
+- Firmware reportedly supports remote domain modification, but the exact command/ACK is not documented locally or implemented.
+- Remote configuration requires the old connection to still work; Bluetooth is needed when the lock is already offline.
+- The modem is only identified as a European-market Quectel 4G Cat 1 module. Obtain exact model and LTE bands before claiming Rwanda compatibility.
+- The lock's internal battery powers lock/GPS/4G; the scooter battery only charges it.
+- Each lock currently has unique fixed password/key material. Dynamic per-ride BLE credentials are future protocol work.
+- Preferred shipment control: configure/test in China, send one production-representative unit to Rwanda, validate the real carrier/server path, then release the remaining batch.
+- Read `docs/manufacturer-follow-up-2026-07-26-sim-server-hardware.md` before SIM/carrier/server configuration work.
 
 Supabase/mobile direction:
 
@@ -4471,23 +5878,16 @@ Supabase/mobile direction:
 - First slice preserves the admin JWT, adds Supabase rider token verification/profile APIs, and implements Flutter email/password auth.
 - Do not change production `DATABASE_URL` until backup, migrations, test restore, and rollback are proven.
 
-Current Git state on July 24, 2026:
+Current Git state on July 26, 2026:
 
 ```text
 main...origin/main
- M IsokoApp/lib/features/admin/domain/admin_dashboard.dart
- M IsokoApp/lib/features/admin/presentation/screens/admin_dashboard_screen.dart
- M admin-web/src/main.js
- M scripts/scooter-simulator.ts
- M src/services/deviceService.ts
- M src/tcp/protocolRouter.ts
- M tests/tcp/protocolRouter.test.ts
-?? PROJECT_DATA.md
-?? docs/manufacturer-follow-up-2026-07-24.md
-?? docs/supabase-implementation-plan.md
+ M PROJECT_DATA.md
+ M docs/manufacturer-follow-up-2026-07-24.md
+?? docs/manufacturer-follow-up-2026-07-26-sim-server-hardware.md
 ```
 
-The ignored `.env` does not appear in Git status. Preserve the simulator UPDATE ACK, Supabase plan, telemetry correction, tests, and documentation unless deliberately superseded.
+The July 24 telemetry/simulator/Supabase-plan work is now committed in `main`; the current uncommitted work is documentation from the July 26 manufacturer session.
 
 Verification on July 24:
 
@@ -4509,15 +5909,842 @@ Do not confuse product maturity:
 
 Before production, prioritize:
 
-1. Commit/push the current telemetry, simulator, test, and documentation changes.
-2. Pull/build/restart the backend on the VPS and redeploy the admin web on Vercel.
-3. Confirm the next real STATUS packet displays correct battery and raw signal values.
-4. Obtain signal units/thresholds, charging hysteresis, tamper-sensor hardware confirmation, real failed OPEN/LOCK packets, and firmware interruption/recovery details.
-5. Make command ACK handling validate error codes and persist returned diagnostics.
-6. Execute the remaining factory acceptance plan and capture real packet logs.
-7. Wait for explicit approval, then execute the first Supabase rider-auth/profile slice without moving the production database.
-8. Rotate the exposed Supabase privileged key and later rotate `JWT_SECRET` at a coordinated time.
-9. Establish Prisma migration history plus off-server PostgreSQL backup/test restore before any Supabase database cutover.
-10. Implement first-class ALERT/fault handling, structured RECORD reconciliation, PM2 startup verification, monitoring, and persistent authorized ride lifecycle.
+1. Agree on a one-unit Rwanda pilot and do not release the full China shipment until it passes.
+2. Obtain the exact Quectel model/bands and verify the intended Rwanda carrier/SIM/APN.
+3. Obtain the physical SIM replacement procedure and sealing/warranty impact.
+4. Obtain the secured Bluetooth APN/server configuration protocol/tool and the existing remote domain/IP/port command.
+5. Implement documented non-`00` OPEN/LOCK error handling and prove representative failures on hardware.
+6. Confirm production signal thresholds, tamper-sensor hardware, and firmware-update recovery.
+7. Execute the remaining factory acceptance plan and capture real packet logs.
+8. Wait for explicit approval, then execute the first Supabase rider-auth/profile slice without moving the production database.
+9. Rotate exposed secrets and establish migrations plus verified off-server backup/restore.
+10. Implement alerts, RECORD reconciliation, PM2 startup verification, monitoring, and persistent authorized ride lifecycle.
 
 For every future significant action, update the relevant current-state section, append a new Session History entry, preserve old Problems/Timeline entries, and refresh this Resume Context before ending the work session.
+
+## Session Entry: July 27, 2026 - Production GPS Packet Clarification
+
+Date:
+
+- Monday, July 27, 2026.
+
+Context:
+
+- The client asked whether the developer already has everything needed to display GPS locations or still needs the GPS packet from the factory.
+
+Investigation:
+
+- Rechecked `Answers.md`, `SmartLock-IOT_V1_3_.md`, the protocol registry/router, Prisma telemetry fields, and the July 24 manufacturer follow-up.
+- The documents already define the general-firmware `LOCA` envelope, embedded `GDATA` fields, and server `ACK^LOCA`; a complete example is already available.
+- The backend accepts `LOCA` and `GDATA`, preserves each raw packet, acknowledges the command received, extracts documented latitude/longitude positions, and updates current scooter coordinates.
+
+Conclusion and decision:
+
+- Another copy of the generic GPS packet specification is not required to continue basic latitude/longitude parsing.
+- Production GPS is not considered fully validated until the factory sends complete, unedited raw packets captured from the exact production lock/firmware being shipped.
+- Request at minimum one outdoor packet with a valid GPS fix and one packet with no/invalid GPS fix. A stationary and moving sequence is also useful for drift/speed validation.
+- Ask the factory to confirm coordinate datum (expected WGS-84), GPS timestamp timezone, speed unit, direction unit, altitude unit, and configured parked/ride upload intervals.
+- These are acceptance-test captures, not evidence that the protocol format is undocumented.
+
+Current limitation:
+
+- The backend currently structures only latitude/longitude from `GDATA`; validity, satellite count, GPS time, speed, direction, altitude, positioning source, and CELL data remain preserved only in raw telemetry.
+- The admin can display coordinates after a real packet is received, but full mobile map/location UX and drift/movement/parking logic remain future work.
+
+Files modified:
+
+- `PROJECT_DATA.md` only.
+
+Recommended next step:
+
+- Ask the factory for the two production raw packet captures and field/unit confirmations while explaining that basic GPS format support is already present.
+
+# Superseded Resume Context (Before Functional Profile Management)
+
+You are resuming the ISOKO scooter-lock project after the first functional Supabase rider-auth/profile foundation and its same-day data-ownership correction on Sunday, July 26, 2026. Read this whole file before changing code, infrastructure, or Supabase.
+
+Production remains a working pilot and was not changed during the auth implementation:
+
+- API: `https://api.smstechnologieset.com`.
+- Lock TCP endpoint: `62.171.160.225:7000` using raw G168 plain TCP.
+- Admin dashboard: `https://test.smstechnologieset.com/` with the older Vercel URL also active.
+- Contabo Ubuntu VPS app directory: `/opt/scooter-lock`.
+- Backend runs as Unix user `deploy` under PM2 app `scooter-lock-backend`.
+- REST binds `127.0.0.1:3000`; TCP binds `0.0.0.0:7000`; Nginx exposes HTTPS; PostgreSQL is local.
+- UFW exposes 22, 80, 443, and 7000.
+- Manual admin JWT and physical lock/admin command path are still production-active and working.
+
+The permanent architecture boundary is non-negotiable:
+
+- Supabase owns everything rider/user-related: Auth identities, credentials/sessions, profiles, preferences, future reservations/rides/payments/history, and rider files.
+- VPS PostgreSQL owns scooters, lock TCP connections, telemetry, command lifecycle, and admin operational/audit records.
+- Do not change the VPS `DATABASE_URL` to Supabase. There is no pending whole-database cutover.
+- Legacy VPS user/ride tables may physically remain from historical `db push`; never drop them without inventory, verified backup, and a reviewed cleanup migration.
+
+The corrected mobile foundation now exists locally:
+
+- Flutter uses `supabase_flutter` 2.16.0 for email/password signup/sign-in, confirmation state, persistent token refresh, session-aware routing, and local sign-out.
+- A Supabase Auth trigger creates `public.profiles` and `public.user_preferences`; Flutter account setup loads both directly under RLS before entering the remaining prototype journey.
+- `profiles` exposes only owner select and updates to `display_name`/owned `avatar_path`; riders cannot edit status, IDs, or timestamps.
+- `user_preferences` exposes only owner select and approved preference-column updates.
+- Private `avatars` allows 5 MB JPEG/PNG/WebP objects only under `<auth-user-uuid>/<filename>`.
+- Migration: `supabase/migrations/202607260001_user_foundation.sql`.
+- `ApiClient` attaches the current Supabase rider access token.
+- Fastify has a separate `authenticateRider` guard and validates tokens against the configured project's `/auth/v1/user` endpoint using only its public publishable/legacy anon key.
+- Fastify requires Supabase `aud=authenticated`, `role=authenticated`, and a UUID identity, but no current route uses this rider guard yet.
+- There are no `/me` routes or VPS rider repositories. The intermediate implementation was removed before deployment.
+- Prisma now models only standalone `Admin` plus scooter/connection/telemetry/command/location/audit operational data; `User`, `Trip`, and `RideSession` were removed locally.
+- Preferred configuration is `SUPABASE_URL` plus `SUPABASE_PUBLISHABLE_KEY`; legacy `SUPABASE_ANON_KEY` is supported. Never use the service-role key in Flutter or for this verifier.
+- `npm run mobile:env` reads root `.env` and writes ignored `IsokoApp/env.local.json` with public config only; it never copies `SUPABASE_SERVICE_ROLE_KEY`.
+
+Supabase setup and end-to-end proof are pending. Do not claim rider auth/profile is live until `docs/mobile-auth-deployment.md` passes. Specifically:
+
+1. Rotate the service-role key that was exposed in conversation; the current app does not need it.
+2. Configure email Auth, Site URL/redirect allow-list, password policy, and production SMTP in Supabase.
+3. Run `supabase/migrations/202607260001_user_foundation.sql` in SQL Editor.
+4. Verify RLS, column grants, triggers, backfill, and the private `avatars` bucket/policies.
+5. Run `npm run mobile:env`, then Flutter with `--dart-define-from-file=env.local.json`.
+6. Create/confirm/sign in one rider and verify profile/preferences/session/sign-out.
+7. Use a second rider to prove cross-user table and avatar access is denied.
+8. Commit/push without losing the existing manufacturer documentation and wider dirty-tree app changes.
+
+A temporary local Flutter web server was started at `http://127.0.0.1:8081` for UI inspection. It uses public ignored local configuration and is not a deployment. Port 8080 belongs to an unrelated Apache process and must not be stopped as part of this project.
+
+Do not connect Flutter to existing `/scooters/*` lock or maintenance routes yet. Those routes still use the legacy custom JWT and lack reservation, ownership, concurrency, active-ride, parking, and command-reconciliation controls. Rider mobile lock control comes only after the persistent reservation/ride authorization state machine.
+
+Current auth limitations:
+
+- Password reset and mobile confirmation deep links are not implemented.
+- Phone OTP is disabled in current Supabase settings; Google and Apple are not configured.
+- Fastify verification will make a Supabase Auth network call for each future rider-protected request until a tested JWKS/cache design is used.
+- Admin authentication remains a manual seven-day JWT.
+- Avatar/preferences editing UI, account deletion, suspension management UI, privacy retention, and user audit events are incomplete.
+- The legacy/non-UTF-8 `IsokoApp/README.md` still contains stale frontend-only/Firebase text; use current implementation docs and this file instead.
+
+Verification for the corrected local slice:
+
+- `npm run mobile:env` passed and generated only public key names.
+- Prisma generate and validation passed; validation used a temporary process-only dummy URL because root `.env` lacks `DATABASE_URL`.
+- Backend TypeScript build passed.
+- All 27 applicable backend tests passed across 3 files; removed `/me` tests belonged to the rejected design.
+- Flutter analysis passed with no issues.
+- `git diff --check` passed and tracked-content scanning found no service-role assignment or JWT-shaped secret.
+- Corrected Flutter widget tests/builds did not complete in the managed runner because commands stalled silently; the earlier pre-correction baseline was eight tests and a configured web build passing. Rerun them in normal PowerShell before commit/release.
+- Supabase SQL/RLS was not executed remotely; two-user integration proof is pending.
+
+The lock/factory critical context remains unchanged:
+
+- STATUS is battery voltage, solar voltage, raw signal, lock state. Battery conversion/low-battery fix is local and awaits production deployment unless separately confirmed later.
+- Charging hysteresis is answered: enter at `solar >= battery + 10`, exit at `solar < battery`, retain previous state between thresholds, unknown before first threshold.
+- GPS packet structure is already documented and basic `LOCA`/`GDATA` latitude/longitude parsing exists. Still obtain full valid-fix and invalid/no-fix raw captures from the exact production firmware plus coordinate datum/time/speed/direction/altitude unit confirmation before GPS acceptance.
+- Any matching command ACK still completes pending commands even when OPEN/LOCK error code is non-`00`; fix this before rider lock control.
+- Exact Quectel model/LTE bands, Rwanda carrier proof, safe SIM procedure, Bluetooth APN/server recovery tool, and remote domain command are still required.
+- Do not release the full China batch until one production-representative unit passes Rwanda carrier/server testing.
+
+Highest-priority next work:
+
+1. Rotate the exposed service-role key and apply/verify the Supabase foundation using the controlled guide.
+2. Prove signup, profile/preferences, RLS isolation, session restoration, and sign-out with real test riders.
+3. Rerun Flutter tests and a configured mobile build locally, then commit/push.
+4. Add password recovery, mobile deep links, profile/preferences editing, and avatar upload.
+5. Keep factory testing active and implement non-`00` command ACK failures.
+6. Design Supabase reservation/ride tables plus trusted cross-database orchestration before mobile lock controls.
+
+For every future significant action, update current state, timeline, decisions/problems/known issues, file history, objectives, append Session History, and refresh this final Resume Context.
+
+## Session Entry: July 27, 2026 - Functional Rider Profile Management
+
+Date:
+
+- Monday, July 27, 2026.
+
+Starting point:
+
+- The project owner confirmed that the Supabase migration had run successfully and a real rider had completed signup, verification email, sign-in, and sign-out.
+- The requested next slice was a functional rider identity/profile experience: live name/avatar in the hamburger menu, a tappable profile destination, and editing of profile details, email, password, and avatar.
+
+Completed:
+
+- Expanded `ProfileRepository` from read-only profile/preferences access into the single account-mutation boundary.
+- Added display-name updates to `public.profiles` under the current rider's RLS context.
+- Added email-change requests through Supabase Auth, including a result that distinguishes an immediately active email from a confirmation-pending request.
+- Added password changes through Supabase Auth after reauthenticating with the signed-in rider's current email and current password.
+- Added private avatar signed-URL creation, owner-path validation, JPEG/PNG/WebP and 5 MB checks, timestamped upload paths, profile-row updates, replacement/removal, and compensating cleanup when persistence fails.
+- Added `currentAvatarUrlProvider` and `UserProfile.copyWith` for shared account presentation state.
+- Added `ProfileAvatar`, which displays the signed private image and falls back to rider initials if absent or unavailable.
+- Replaced the menu's hardcoded identity with live display name, email, and avatar; tapping the full header now pushes `/profile`.
+- Added `ProfileScreen` with responsive personal-details, avatar, and password sections, independent busy/error state, validation, visibility toggles, confirmation messaging, and back navigation.
+- Added `/profile` to account routes.
+- Added `image_picker` 1.2.2 and generated platform registrations.
+- Added the iOS photo-library purpose string. Camera capture was intentionally not added.
+- Added profile widget tests for name/email changes and current-password/new-password forwarding.
+
+Files modified or added for this slice:
+
+- `IsokoApp/lib/features/account/data/profile_repository.dart`.
+- `IsokoApp/lib/features/account/data/providers.dart`.
+- `IsokoApp/lib/features/account/domain/user_profile.dart`.
+- `IsokoApp/lib/features/account/presentation/screens/profile_screen.dart`.
+- `IsokoApp/lib/features/account/presentation/widgets/profile_avatar.dart`.
+- `IsokoApp/lib/core/router/routes/account_routes.dart`.
+- `IsokoApp/lib/features/mock/presentation/screens/mock_screens.dart`.
+- `IsokoApp/pubspec.yaml` and `IsokoApp/pubspec.lock`.
+- Generated Linux, macOS, and Windows plugin registrants.
+- `IsokoApp/ios/Runner/Info.plist`.
+- `IsokoApp/test/profile_screen_test.dart`.
+- `IsokoApp/docs/implementation-decisions.md`.
+- `docs/supabase-implementation-plan.md`.
+- `docs/mobile-auth-deployment.md`.
+- `PROJECT_DATA.md`.
+
+Decisions:
+
+- Keep all profile mutations within Supabase: Auth for credentials/email, PostgreSQL/RLS for profile columns, and private Storage for media.
+- Require current-password reauthentication before password replacement in the profile UX.
+- Use private avatars and 24-hour signed URLs instead of a public bucket.
+- Use unique timestamped avatar objects and cleanup rather than overwriting a stable path, reducing stale-cache behavior and allowing compensation if the profile-row update fails.
+- Do not touch the VPS, Fastify, Prisma, Vercel, Nginx, DNS, or lock protocol for this user-owned feature.
+
+Problems encountered and solutions:
+
+- `flutter pub add image_picker` appeared to time out silently. Inspection proved that the lockfile, package config, package graph, and generated registrants were complete, so no duplicate/manual lockfile edit was made.
+- Initial analysis found one const-constructor lint in `ProfileAvatar`; it was fixed.
+- The focused Flutter test remained silent and timed out in the sandbox. Outside-sandbox execution could not be approved because the automated approval reviewer reported an unsupported model. This is recorded as an execution-environment limitation, not a test pass or test failure.
+
+Verification:
+
+- `.dart_tool/package_config.json` and generated plugin registrants include `image_picker` and its platform packages.
+- `flutter analyze`: passed with no issues after the const fix.
+- `flutter build apk --debug --dart-define-from-file=env.local.json`: passed and produced `IsokoApp/build/app/outputs/flutter-apk/app-debug.apk`.
+- `test/profile_screen_test.dart` compiles under analysis; execution is still pending in normal PowerShell because the managed runner timed out.
+- No real avatar/email/password mutation against Supabase was performed by Codex in this session.
+
+Remaining work:
+
+- Run `flutter test` in normal PowerShell.
+- On a real device, prove live menu identity, name persistence, avatar choose/replace/remove/persistence, new-email confirmation behavior, wrong-current-password rejection, and correct-current-password update.
+- Add a second rider and prove owner-versus-other-user RLS and private Storage denial in both directions.
+- Add password recovery and mobile email-confirmation deep links.
+- Add preference editing, deletion/export/privacy flows, and provider-specific account management later.
+
+Recommended next step:
+
+- Run the focused/full Flutter tests locally, then perform the real-device profile acceptance checklist with the existing confirmed rider before beginning password recovery or scooter discovery.
+
+## Session Entry: July 27, 2026 - Profile Acceptance and Next Functional Slice
+
+Date:
+
+- Monday, July 27, 2026.
+
+Progress confirmed:
+
+- The project owner manually tested the newly implemented menu/profile experience and reported that it looks good and works well.
+- This confirmation closes the current profile-management UI slice, but it is not recorded as proof of two-user RLS/Storage isolation or every recovery/expired-session edge case.
+
+Next-stage recommendation:
+
+- Complete account safety next with Forgot Password, Supabase recovery email, a Set New Password screen, and production-ready mobile email/recovery deep-link handling.
+- Final Android application ID, iOS bundle ID, and an owned rider-app link domain should be agreed before production link configuration; avoid shipping links tied to the current `com.example.isoko_scooter` placeholder.
+- After recovery, make scooter discovery real: rider-authenticated, rider-safe VPS availability/location data feeding the Flutter list/map.
+- Add QR scanning after a stable public scooter code exists.
+- Design persistent reservation/ride authorization before connecting mobile unlock/lock. Authentication alone must never authorize an arbitrary scooter command.
+
+Files modified:
+
+- `PROJECT_DATA.md` only.
+
+Remaining verification:
+
+- Normal-PowerShell Flutter test execution.
+- Two-rider profile/preferences/avatar RLS and Storage isolation.
+- Detailed email-change/password negative-path acceptance if not already covered by the owner's manual test.
+
+Recommended immediate input:
+
+- Confirm the final Android/iOS app identifiers and preferred rider link host, then implement password recovery/deep links as one bounded slice.
+
+# Superseded Resume Context (Before Password Recovery and Native Auth Links)
+
+You are resuming the ISOKO scooter-lock project on Monday, July 27, 2026 after functional Supabase rider authentication and local profile management were implemented. Read this entire document before changing code, infrastructure, Supabase, or lock behavior.
+
+Production pilot, unchanged by the mobile profile work:
+
+- API: `https://api.smstechnologieset.com`.
+- Lock TCP endpoint: `62.171.160.225:7000`, raw G168 plain TCP.
+- Admin dashboard: `https://test.smstechnologieset.com/`; the older Vercel URL also exists.
+- Contabo Ubuntu VPS app directory: `/opt/scooter-lock`.
+- Backend runs as Unix user `deploy` under PM2 app `scooter-lock-backend`.
+- REST binds `127.0.0.1:3000`; TCP binds `0.0.0.0:7000`; Nginx exposes HTTPS; PostgreSQL is VPS-local.
+- UFW exposes 22, 80, 443, and 7000.
+- Manual admin JWT and real-lock admin commands remain active and previously tested successfully.
+
+Permanent data boundary:
+
+- Supabase owns every rider/user concern: Auth identities, credentials/sessions, profiles, preferences, rider media, and future reservations/rides/payments/history.
+- VPS PostgreSQL owns scooters, lock TCP connections, telemetry, command lifecycle, and admin operational/audit data.
+- Never point the VPS `DATABASE_URL` at Supabase. There is no whole-database cutover.
+- Legacy VPS rider/ride tables may remain from historical `prisma db push`; never drop them without inventory, off-server backup, and a reviewed migration.
+- Never expose or use `SUPABASE_SERVICE_ROLE_KEY` in Flutter, Vercel, or ordinary token verification. The shared service-role key must be rotated before production use.
+
+Current mobile account implementation:
+
+- `supabase_flutter` 2.16.0 provides email/password signup/sign-in, email verification state, persistent token refresh, session-aware routing, and sign-out.
+- `supabase/migrations/202607260001_user_foundation.sql` has been run successfully in Supabase.
+- The Auth trigger creates owner-linked `public.profiles` and `public.user_preferences`; one real rider completed signup, verification email, sign-in, and sign-out on July 27.
+- Flutter account setup loads both rows directly under RLS and rejects non-active profiles.
+- The menu displays the live rider name, email, and signed private avatar; tapping the account header opens `/profile`.
+- `/profile` updates display name, requests Auth email changes, verifies the current password before updating it, and chooses/replaces/removes avatars.
+- The private `avatars` bucket permits JPEG/PNG/WebP up to 5 MB under `<auth-user-uuid>/`. Flutter uses unique timestamped paths and 24-hour signed URLs with initials fallback.
+- Email/password values and avatar bytes are never stored in VPS PostgreSQL.
+- `ApiClient` attaches the current Supabase rider access token to future Fastify requests.
+- Fastify has a separate `authenticateRider` guard that validates against Supabase `/auth/v1/user` with a public key; no current route uses it.
+- Existing `/scooters/*` rider route skeletons still use the legacy custom JWT and must not be connected to Flutter lock controls yet.
+
+Verification status:
+
+- Supabase migration and one-user signup/verification/sign-in/sign-out: passed by the project owner.
+- Flutter analysis after profile work: passed with no issues.
+- Configured Android debug APK with `image_picker`: built successfully at `IsokoApp/build/app/outputs/flutter-apk/app-debug.apk`.
+- Focused profile tests exist and compile under analysis, but `flutter test` execution timed out in the managed runner; run it in normal PowerShell and do not claim a pass until then.
+- The project owner manually tested the menu/profile experience and reported it looks good and works well. Do not overstate this as exhaustive negative-path or cross-user security proof.
+- Two-user table RLS and private avatar Storage isolation are still pending.
+
+Immediate mobile acceptance checklist:
+
+1. Run `flutter test test/profile_screen_test.dart` and then `flutter test` in normal PowerShell.
+2. Create a second rider and prove neither rider can read/update the other's profile/preferences or avatar objects.
+3. Confirm any profile negative paths not covered by the owner's successful manual check: email confirmation, wrong current password, and persistence after a new session.
+
+Current limitations and next product work:
+
+- Password reset and mobile auth deep links are not implemented.
+- Phone OTP is disabled; Google and Apple are not configured.
+- Preference editing, account deletion/export, privacy retention, user audit, and provider-specific credential UX remain pending.
+- Scooter discovery, real maps/GPS UX, QR camera, reservation, ride persistence, pricing, parking validation, and payments remain mock/planned.
+- Do not expose rider lock/unlock until persistent reservation/active-ride authorization, concurrency, parking rules, non-`00` ACK failures, and command reconciliation are implemented.
+- Admin authentication remains a manual seven-day JWT; the dashboard is snapshot-based and not realtime.
+
+Lock/factory context that remains launch-critical:
+
+- STATUS fields are battery voltage, solar voltage, raw signal, and lock state. The local battery/signal correction still requires confirmed production deployment unless documented later.
+- Charging state is hysteretic: enter at `solar >= battery + 10`, exit at `solar < battery`, retain prior state between thresholds, unknown before a threshold establishes state.
+- Basic `LOCA`/`GDATA` latitude/longitude parsing exists. Obtain valid and invalid raw packets from exact production firmware plus datum/time/speed/direction/altitude units before GPS acceptance.
+- Matching command ACKs currently complete pending commands even when OPEN/LOCK error code is non-`00`; fix this before rider lock control.
+- Exact Quectel model/LTE bands, intended Rwanda carrier/APN proof, physical SIM procedure, Bluetooth APN/server recovery tool, and remote domain command remain required.
+- Do not approve the full China shipment until a production-representative unit passes Rwanda carrier/server testing.
+
+Highest-priority next work:
+
+1. Confirm final Android/iOS identifiers and the owned rider-app link domain, then add password recovery and mobile email-confirmation/recovery deep links.
+2. Finish normal-PowerShell tests and two-user RLS/Storage isolation.
+3. Rotate the exposed Supabase service-role key.
+4. Implement rider-safe live scooter discovery/list/map, followed by QR scanning against a stable public scooter code.
+5. Continue factory acceptance and implement non-`00` command failure handling.
+6. Design Supabase reservation/ride/payment records plus trusted cross-database orchestration before any mobile lock command.
+7. Commit/push the combined dirty working tree carefully without losing manufacturer documentation or unrelated user changes.
+
+For every future significant action, update all relevant current-state sections, preserve historical problems/decisions, append a Session History entry, and refresh this final Resume Context before ending the session.
+
+## Session Entry: July 27-29, 2026 - Password Recovery and Native Auth Links
+
+Date:
+
+- Implementation began Monday, July 27, 2026 and was completed/documented after interruptions on Wednesday, July 29, 2026.
+
+Completed:
+
+- Added public `AUTH_REDIRECT_URL` configuration with default `com.smstechnologieset.isoko://auth/callback`.
+- Added Supabase reset-email requests and recovered-password updates to the auth repository.
+- Preserved typed Supabase auth events and made password recovery override normal signed-in routing.
+- Added persisted pending-recovery state using Supabase Flutter's existing shared-preferences adapter; no new dependency was retained.
+- Added Forgot Password, Create New Password, auth-loading, and safe invalid-link screens plus reusable auth messages.
+- Added Forgot Password navigation from sign-in.
+- Applied the callback to signup and profile email-change requests.
+- Changed Android namespace/application ID and iOS bundle ID to `com.smstechnologieset.isoko`.
+- Moved Android `MainActivity` to the matching Kotlin package and registered the callback intent filter.
+- Registered the custom callback scheme in iOS `CFBundleURLTypes`.
+- Added recovery-focused widget tests.
+- Created `docs/mobile-auth-links.md` and corrected mobile deployment, Supabase plan, and Flutter implementation-decision documents.
+- Updated all current-state, architecture, timeline, decision, problem, dependency/configuration, file-history, objective, session, and resume sections in `PROJECT_DATA.md`.
+
+Files modified or added for this slice:
+
+- Root `.env.example`.
+- `IsokoApp/env.example.json`.
+- `scripts/create-flutter-env.mjs`.
+- `IsokoApp/lib/core/config/app_config.dart`.
+- `IsokoApp/lib/features/auth/data/auth_repository.dart`.
+- `IsokoApp/lib/features/auth/data/auth_recovery_store.dart`.
+- `IsokoApp/lib/features/auth/data/providers.dart`.
+- `IsokoApp/lib/core/router/app_router.dart`.
+- `IsokoApp/lib/core/router/routes/auth_routes.dart`.
+- `IsokoApp/lib/features/auth/presentation/screens/sign_in_screen.dart`.
+- New auth screens: `forgot_password_screen.dart`, `reset_password_screen.dart`, `auth_loading_screen.dart`, and `auth_link_error_screen.dart`.
+- New reusable `IsokoApp/lib/features/auth/presentation/widgets/auth_message.dart`.
+- `IsokoApp/lib/features/auth/presentation/screens/sign_up_screen.dart` and `IsokoApp/lib/features/account/data/profile_repository.dart` for callback use.
+- `IsokoApp/android/app/build.gradle.kts`, Android manifest, moved `MainActivity.kt`, iOS Xcode project, and iOS `Info.plist`.
+- `IsokoApp/test/auth_recovery_test.dart` and affected auth test doubles.
+- `docs/mobile-auth-links.md`, `docs/mobile-auth-deployment.md`, `docs/supabase-implementation-plan.md`, `IsokoApp/docs/implementation-decisions.md`, and `PROJECT_DATA.md`.
+
+Decisions:
+
+- Use a custom callback now and move to verified HTTPS later because release signing/association inputs do not yet exist.
+- Use `com.smstechnologieset.isoko` as the durable package/bundle identity instead of continuing with Flutter's `com.example` placeholder.
+- Keep Supabase PKCE and clearly require same-device/same-installation email opening.
+- Preserve recovery event semantics and state rather than treating a recovery session as ordinary sign-in.
+- Reuse Supabase Flutter's storage adapter instead of adding another persistence package.
+- Leave VPS, Nginx, Vercel, Prisma, Supabase SQL schema, and lock protocol unchanged for this rider-auth feature.
+
+Problems encountered and solutions:
+
+- A deprecated `AuthChangeEvent.userDeleted` reference was rejected by the installed Supabase Flutter API; it was removed and unknown events use a compatible fallback.
+- Flutter analysis found one missing `const`; it was fixed and analysis passed.
+- Flutter package/format/test operations can stall in this managed environment. The focused recovery test timed out silently after 240 seconds; it is explicitly unverified, not failed or passed.
+- The interrupted documentation patch did apply, but left contradictory old planning bullets. They were audited and corrected on July 29.
+
+Verification:
+
+- `npm.cmd run mobile:env`: passed.
+- `flutter analyze --no-pub`: passed with no issues after fixes.
+- `flutter build apk --debug --no-pub --dart-define-from-file=env.local.json`: passed.
+- APK: `IsokoApp/build/app/outputs/flutter-apk/app-debug.apk`.
+- `flutter test --no-pub test/auth_recovery_test.dart`: timed out silently after 240 seconds; no result is claimed.
+- `git diff --check`: passed.
+- Secret scan excluding ignored `.env`, `IsokoApp/env.local.json`, build output, Dart tooling, and `.git`: found no JWT and no assigned `SUPABASE_SERVICE_ROLE_KEY` in project files.
+- Native/app/test source scan found no stale `com.example.isoko_scooter` identifier.
+- Supabase dashboard callback configuration and real-device recovery behavior were not changed/tested by Codex.
+
+Remaining work:
+
+- Add `com.smstechnologieset.isoko://auth/callback` to Supabase Authentication Redirect URLs.
+- Run focused/full Flutter tests in normal PowerShell.
+- Perform Android same-device, reused/expired-link, old/new-password, and cold-start acceptance.
+- Repeat on a signed physical iOS device when available.
+- Complete two-rider RLS/private Storage isolation proof and profile negative paths.
+- Rotate the exposed Supabase service-role key.
+- Add preference editing and then rider-safe scooter discovery; do not expose mobile lock control yet.
+
+Recommended next step:
+
+- Configure the exact callback in Supabase and run the Android recovery acceptance checklist in `docs/mobile-auth-links.md` before starting scooter discovery.
+
+## Session Entry: July 29, 2026 - Recovery Link Tested in Chrome
+
+Date:
+
+- Wednesday, July 29, 2026.
+
+What was clarified:
+
+- The project owner received a correctly shaped Supabase PKCE recovery URL but manually opened it in Chrome while testing Flutter Web, where the native custom-scheme callback appeared to do nothing.
+- The current callback is intentionally owned by installed Android/iOS apps. Flutter Web has no handler for it.
+- PKCE requires the same requesting installation/context, so a recovery requested in Chrome cannot simply be completed by a separate native app installation.
+
+Files modified:
+
+- `docs/mobile-auth-links.md`.
+- `PROJECT_DATA.md`.
+
+Decision:
+
+- Keep mobile recovery acceptance focused on installed Android/iOS builds. Do not add a web callback until browser recovery is an explicit product requirement.
+
+Problem and solution:
+
+- Symptom: native redirect appeared inert in Chrome.
+- Cause: platform mismatch plus PKCE same-installation state.
+- Solution: install/run Android, request recovery inside that app, and tap a fresh email link on the same device. Use a separate HTTPS web callback only if web recovery is deliberately implemented later.
+
+Remaining work:
+
+- Complete the native Android acceptance checklist. The shared/pasted one-time link should be replaced with a fresh request.
+
+## Session Entry: July 29, 2026 - Client APN Recovery Clarification
+
+Date:
+
+- Wednesday, July 29, 2026.
+
+Question:
+
+- The client asked whether entering incorrect APN data causes major issues and whether configuration can simply be tried again.
+
+Answer and reasoning:
+
+- Incorrect APN data should not physically damage the lock or SIM, but it can prevent the modem from obtaining mobile data and make the lock disappear from the server/dashboard.
+- Once cellular connectivity is lost, the existing remote server path cannot be relied on to correct the setting.
+- Recovery is straightforward only if the factory provides and proves a local method such as its proposed Bluetooth configuration protocol/tool, a service cable/tool, a documented reset/default-APN fallback, or automatic rollback to the last working APN.
+- Power cycling must not be assumed to restore the old APN; persistence, validation, rollback, and factory-reset behavior remain manufacturer questions.
+- The safe rollout is one accessible bench/pilot unit with the intended Rwanda SIM/APN, verified read-back and reconnect, preserved old settings, and an established local recovery process before any batch update or shipment approval.
+- A complete Rwanda pilot procedure was added: verify carrier activation and module bands, baseline the current lock, change only APN fields, read back/power-cycle, confirm REGISTER/CCID/heartbeat and repeated commands, test locations/outage/reconnect, soak for 24-72 hours, then deliberately prove wrong-APN local recovery before fleet rollout.
+
+Files modified:
+
+- `docs/manufacturer-follow-up-2026-07-26-sim-server-hardware.md`.
+- `PROJECT_DATA.md`.
+
+Decision:
+
+- Do not describe APN reconfiguration as risk-free or activate the fleet until the manufacturer demonstrates a recovery path that works after cellular connectivity is lost.
+- Because an advance bike cannot ship and the deadline is under one month, prefer a loose-lock test; otherwise use final-firmware China bench/roaming evidence, ship the full batch, and block Rwanda worker deployment until one arrived unit passes local acceptance.
+
+## Session Entry: July 29, 2026 - Four-Week MVP and Store Plan
+
+Date:
+
+- Wednesday, July 29, 2026.
+
+Request:
+
+- The project owner requested a complete statement of achievements and a practical plan to finish, deploy, and publish the rider app to Google Play and Apple's App Store within four weeks.
+
+Completed:
+
+- Reconstructed the achieved backend, VPS, admin, Flutter/Supabase, hardware-test, and manufacturer-documentation state.
+- Identified the missing rider-safe discovery, map/location, QR, reservation/ride authorization, command reconciliation, ride history, payment decision, production hardening, signing, legal/store metadata, beta, and review work.
+- Proposed a strict launch MVP and deferred non-critical providers, wallet/promotions, advanced operations, BLE, optional lock features, and other scope that would threaten the deadline.
+- Created a dated four-week calendar with Week 1 live-data/security foundation, Week 2 end-to-end authorized ride, Week 3 hardening/beta/first submission, and Week 4 release candidate/review response/staged rollout.
+- Added Google Play and App Store submission checklists, including the requirement for macOS/Xcode or macOS CI to build and submit iOS from this Windows-based development environment.
+- Added Day-1 client/factory input deadlines, external-risk handling, daily management rhythm, weekly exit gates, and definition of done.
+
+Files modified or added:
+
+- New `docs/four-week-delivery-plan.md`.
+- `PROJECT_DATA.md`.
+
+Decisions and cautions:
+
+- The four-week scope is proposed and requires written client approval before implementation proceeds.
+- Store account verification/review and Rwanda radio acceptance are external gates; the developer can guarantee neither reviewer timing nor local carrier behavior from China.
+- First store submission must occur in Week 3 to preserve review-response time.
+- Engineering completion, store approval, and Rwanda worker deployment must be reported as separate statuses.
+
+Recommended next step:
+
+- Collect every Day-1 input in Section 5 of `docs/four-week-delivery-plan.md`, freeze the MVP, and begin Week 1 workstreams in parallel.
+
+# Archived Resume Context - July 29, 2026
+
+You are resuming the ISOKO scooter-lock project on Wednesday, July 29, 2026 after functional Supabase rider authentication/profile/recovery foundations and a four-week MVP/store plan were completed locally. Read this entire document and `docs/four-week-delivery-plan.md` before changing code, infrastructure, Supabase, release configuration, or lock behavior.
+
+Production pilot, unchanged by the mobile account work:
+
+- API: `https://api.smstechnologieset.com`.
+- Lock TCP endpoint: `62.171.160.225:7000`, raw G168 plain TCP.
+- Admin dashboard: `https://test.smstechnologieset.com/`; the older Vercel URL also exists.
+- Contabo Ubuntu VPS app directory: `/opt/scooter-lock`.
+- Backend runs as Unix user `deploy` under PM2 app `scooter-lock-backend`.
+- REST binds `127.0.0.1:3000`; TCP binds `0.0.0.0:7000`; Nginx exposes HTTPS; PostgreSQL is VPS-local.
+- UFW exposes 22, 80, 443, and 7000.
+- Manual admin JWT and real-lock admin commands remain active and previously tested successfully.
+
+Four-week delivery target:
+
+- Proposed engineering deadline is August 25, 2026, with requested public store release by August 26 subject to external review.
+- The authoritative calendar and MVP scope are `docs/four-week-delivery-plan.md`.
+- Client approval, Play/Apple accounts, Apple Team ID, an iOS macOS build path, Mapbox/payment/SMTP inputs, legal/store assets, and factory deliverables are Day-1 blockers.
+- First store submission is targeted by the end of Week 3 so Week 4 can absorb review feedback.
+
+Permanent data and control boundaries:
+
+- Supabase owns every rider/user concern: Auth identities, credentials/sessions, profiles, preferences, rider media, and future reservations/rides/payments/history.
+- VPS PostgreSQL owns scooters, lock TCP connections, telemetry, command lifecycle, and admin operational/audit data.
+- Never point VPS `DATABASE_URL` at Supabase. Never put `SUPABASE_SERVICE_ROLE_KEY` in Flutter/Vercel or use it for ordinary token verification.
+- Never connect mobile lock/unlock based only on authentication. Reservation/active-ride ownership, payment/eligibility, concurrency, idempotency, parking, command failure semantics, reconciliation, and audit must exist first.
+
+Current mobile implementation:
+
+- `supabase_flutter` 2.16.0 provides email/password signup/sign-in, email verification, persisted/refreshed sessions, reset email, recovered-password update, RLS Data API access, and private Storage access.
+- `supabase/migrations/202607260001_user_foundation.sql` ran successfully. One rider completed signup, verification, sign-in, and sign-out; the owner later reported profile/menu behavior working.
+- `public.profiles`, `public.user_preferences`, and private `avatars` are rider-owned under RLS. The menu and `/profile` use live profile/avatar state.
+- `AUTH_REDIRECT_URL` defaults to `com.smstechnologieset.isoko://auth/callback`. Android namespace/application ID and iOS bundle ID are `com.smstechnologieset.isoko`, and both native projects register this callback.
+- Forgot Password is available from sign-in. Reset requests do not disclose whether an account exists. Recovery event state overrides normal signed-in routing and supports cold starts through a local pending marker.
+- Invalid/expired/wrong-device links route to a safe retry screen. PKCE requires opening the email on the same app installation/device that requested it.
+- The current callback does not work as a Flutter Web/Chrome callback. Request and complete recovery in the installed Android/iOS app; a future web flow would need a separate HTTP(S) Redirect URL and route.
+- `https://app.smstechnologieset.com/auth/callback` is planned later, only after Android release fingerprint, Apple Team ID, association files, entitlements/provisioning, and signed builds are ready.
+- `ApiClient` can attach Supabase access tokens to future Fastify calls. Fastify's separate Supabase rider guard exists but no route currently uses it; legacy `/scooters/*` routes must not be exposed to the app.
+
+Verification status:
+
+- Public mobile config generation: passed.
+- Flutter static analysis: passed with no issues.
+- Configured Android debug APK build: passed at `IsokoApp/build/app/outputs/flutter-apk/app-debug.apk`.
+- Repository whitespace/secret/stale-native-identifier checks passed after documentation completion.
+- Profile and recovery focused tests compile under analysis, but managed-runner execution timed out silently. Run them in normal PowerShell; do not claim a pass from the timeout.
+- Supabase callback allow-list and physical-device recovery acceptance are still pending.
+- Two-user profile/preferences/avatar RLS and Storage isolation are still pending.
+
+Immediate mobile checklist:
+
+1. Add `com.smstechnologieset.isoko://auth/callback` in Supabase Dashboard under Authentication > URL Configuration > Redirect URLs.
+2. Run `npm.cmd run mobile:env`, install the new Android package, and uninstall old `com.example.isoko_scooter` if both debug apps appear.
+3. Test Forgot Password in the installed Android app, not Flutter Web/Chrome: request in the app, tap a fresh email link on the same device, set a new password, prove old password fails/new password works, then test reused/expired and cold-start links.
+4. Run `flutter test test/auth_recovery_test.dart`, `flutter test test/profile_screen_test.dart`, and `flutter test` in normal PowerShell.
+5. Create a second rider and prove cross-user table/Storage denial.
+6. Rotate the exposed Supabase service-role key.
+
+Current product limitations:
+
+- Phone OTP, Google, Apple, preference editing, suspension, export/deletion/privacy workflows, and verified HTTPS links remain pending.
+- Scooter discovery, real maps/location permissions, QR camera, reservations, ride persistence, pricing, parking validation, and payments remain mock/planned.
+- Android release signing is still debug-only; iOS production signing/provisioning is not configured.
+- Google Play/Apple account verification and any mandatory testing/review duration are external schedule risks. iOS cannot be submitted from the current Windows-only machine without macOS/Xcode or macOS CI.
+- Admin auth remains a manual seven-day JWT; dashboard data is snapshot-based and not realtime.
+
+Lock/factory risks that remain launch-critical:
+
+- Confirm production deployment/observation of STATUS battery-voltage conversion and raw signal handling.
+- Matching command ACKs can still complete pending commands even when OPEN/LOCK error code is non-`00`; fix before rider control.
+- Obtain/verify production GPS packets, exact Quectel model/LTE bands, Rwanda carrier/APN behavior, SIM procedure, Bluetooth recovery configuration, remote server-domain command, and firmware-update recovery.
+- A wrong persistent APN can strand a lock offline even though it does not damage the hardware. Require a proven local Bluetooth/service-tool/reset or rollback path before changing APNs on shipped units or a production batch.
+- The exact pilot and schedule-fallback procedures are in `docs/manufacturer-follow-up-2026-07-26-sim-server-hardware.md`. A China test can prove roaming/APN/backend/recovery but not Rwanda local-network behavior.
+- If no advance unit can reach Rwanda, complete the documented China shipment gate, ship the batch, and do not release it into worker service until one unit from the arrived batch passes Rwanda carrier/server acceptance. Continue broader multi-lock/soak/failure testing during controlled rollout.
+
+Highest-priority next work:
+
+1. Obtain written MVP scope approval and every Day-1 external input in `docs/four-week-delivery-plan.md`; immediately start Play/Apple account, iOS build-path, legal/store-asset, and tester work.
+2. Complete Supabase callback/physical-device recovery, normal-PowerShell tests, two-user RLS/Storage isolation, and exposed service-role-key rotation.
+3. Implement rider-safe discovery/list/map and fix non-`00` command failure semantics.
+4. Design and implement Supabase reservation/ride records plus trusted Fastify orchestration before any mobile lock command.
+5. Connect QR/manual code and the complete authorized ride/end-lock/history path, then choose one approved payment/pilot settlement mode.
+6. Continue factory China evidence and first-arrival Rwanda acceptance preparation in parallel.
+7. Produce signed beta builds and complete store metadata during development, targeting first submission by end of Week 3.
+8. Commit/push the combined dirty working tree carefully without losing manufacturer documentation or unrelated user changes.
+
+For every future significant action, update relevant current-state sections, preserve historical decisions/problems/session entries, append a new Session History entry, and refresh this final Resume Context before ending the session.
+
+## Session Entry: July 30-31, 2026 - Native Mapbox, Phone Location, and Factory BLE/GPS Clarification
+
+Date:
+
+- Work began Thursday, July 30, 2026 and verification/documentation completed Friday, July 31, 2026 after an environment interruption.
+
+What was completed:
+
+- Installed `mapbox_maps_flutter` 2.27.0 and `geolocator` 14.0.2 with their locked transitive dependencies.
+- Added `DeviceLocation`, the testable `LocationService` contract, Geolocator adapter, Riverpod `LocationController`, and explicit location states.
+- Replaced the active mock location route with a real screen that checks services/permission, requests foreground access, opens the correct settings, responds when the app resumes, acquires a high-accuracy fix, and routes to the map.
+- Replaced active find/list routes with the native Mapbox screen on Android/iOS.
+- Added phone-centered initial camera, location puck, accuracy ring, recenter action, dark Mapbox Standard styling, legal logo/attribution positioning, stable loading/retry behavior, and explicit missing-token/unsupported-platform/map-failure/empty-scooter states.
+- Preserved the last phone fix during refresh/failure and removed fake scooter markers. Real scooter markers wait for protected discovery data and lock-location validity rules.
+- Initialized Mapbox from `AppConfig.mapboxAccessToken` only on Android/iOS and only when a token exists.
+- Added Android internet/coarse/fine location declarations and explicit SDK 21 floor.
+- Added iOS foreground-location explanation and raised every Xcode deployment target to iOS 14.
+- Added public Mapbox token placeholders to `.env.example` and `IsokoApp/env.example.json`; the existing public-only config generator already conditionally copies the token.
+- Added seven focused location-controller tests.
+- Created `docs/mobile-map-location.md` and updated the four-week plan, manufacturer handover, and all relevant permanent project-data sections.
+
+Factory/client information recorded:
+
+- Client says the factory is configuring firmware for local Bluetooth use through nRF Toolbox and that an IoT-experienced collaborator supplied the SIM.
+- Bluetooth is interpreted as a possible maintenance transport for reading/writing APN/server settings, not a replacement for the APN or the lock's 4G data connection.
+- nRF Toolbox remains technician-only unless complete secure rider BLE requirements are separately supplied and approved.
+- Factory discontinued cellular base-station positioning because deviation exceeds 500 m, Quectel charges apply, and foreign base stations may not support it.
+- The product will not fabricate indoor scooter coordinates. Invalid/missing/old lock GPS is unavailable/stale, while phone location remains separately displayable.
+
+Files modified or added for this slice:
+
+- `.env.example`.
+- `IsokoApp/env.example.json`.
+- `IsokoApp/pubspec.yaml` and `IsokoApp/pubspec.lock`.
+- `IsokoApp/lib/main.dart` and `IsokoApp/lib/core/router/routes/permission_routes.dart` / `scooter_routes.dart`.
+- New `IsokoApp/lib/features/location/domain/device_location.dart`.
+- New `IsokoApp/lib/features/location/data/location_service.dart` and `providers.dart`.
+- Replaced `IsokoApp/lib/features/location/presentation/screens/enable_location_screen.dart`.
+- Replaced `IsokoApp/lib/features/map/presentation/screens/scooter_map_screen.dart`.
+- `IsokoApp/android/app/src/main/AndroidManifest.xml` and `build.gradle.kts`.
+- `IsokoApp/ios/Runner/Info.plist` and `Runner.xcodeproj/project.pbxproj`.
+- New `IsokoApp/test/location_controller_test.dart`.
+- New `docs/mobile-map-location.md`.
+- `docs/four-week-delivery-plan.md`.
+- `docs/manufacturer-follow-up-2026-07-26-sim-server-hardware.md`.
+- `PROJECT_DATA.md`.
+- Flutter-generated plugin registrants/lock data changed during `flutter pub add`; those generated changes are preserved.
+
+Decisions:
+
+- Use native Mapbox plus Geolocator rather than public OSM raster tiles, Google Maps, or a fake map.
+- Keep location access behind a testable project boundary.
+- Do not show synthetic scooters or substitute phone coordinates for lock coordinates.
+- Do not add cellular base-station positioning.
+- Keep factory BLE/nRF Toolbox maintenance separate from ordinary rider controls.
+- Request foreground location only; background tracking is not justified for the current MVP.
+
+Problems encountered and solutions:
+
+- Flutter/Dart commands were initially slow; direct analysis completed with no source issues but managed telemetry caused a post-analysis access exception. After access restoration, normal Flutter analysis completed cleanly.
+- The environment temporarily became read-only and its automatic approval service failed, interrupting focused test/build execution. Full access was restored and both commands then completed normally.
+- No Mapbox token is currently present in generated Dart defines. The app builds successfully and deliberately shows an unavailable map until a public token is configured.
+
+Verification:
+
+- `flutter analyze --no-pub`: passed, no issues.
+- `flutter test --no-pub test/location_controller_test.dart`: passed, 7 tests.
+- `flutter build apk --debug --no-pub --dart-define-from-file=env.local.json`: passed.
+- APK: `IsokoApp/build/app/outputs/flutter-apk/app-debug.apk`.
+- `git diff --check`: passed before the final documentation append; rerun once more after this append.
+- Physical Android/iOS map rendering and real permission UX were not tested by Codex because no configured public Mapbox token/device session was available.
+
+Remaining work:
+
+- Create/configure the public Mapbox token and usage/billing alerts, add it to ignored root `.env`, run `npm.cmd run mobile:env`, and perform the Android acceptance checklist.
+- Perform iOS acceptance on a Mac with Xcode/signing; verify/regenerate the currently missing `ios/Podfile`.
+- Implement the rider-safe discovery API and validated scooter markers/list.
+- Obtain final-firmware lock GPS valid/invalid samples and define freshness/drift rules.
+- Obtain the nRF Toolbox BLE UUIDs, packets, authentication/key model, persistence, read-back, invalid-setting recovery, exact firmware version, and role clarification.
+- Continue auth-link/RLS proof, security-key rotation, reservation/ride orchestration, QR, payments, signing, and store work from the four-week plan.
+
+Recommended next step:
+
+- Configure the Mapbox public token and prove the real map/location states on a physical Android device, then immediately implement the protected rider-safe discovery endpoint that will supply real scooter annotations.
+
+## Session Entry: July 31, 2026 - Emulator Position and Physical Android Crash Triage
+
+Date:
+
+- Friday, July 31, 2026.
+
+What was completed:
+
+- Explained that the Mountain View/Google-campus location in the emulator screenshot is Android Emulator's simulated GPS input, not an incorrect lookup of the developer's Ethiopian location.
+- Documented Extended controls > Location as the way to send an Ethiopian test coordinate, followed by the app recenter control.
+- Confirmed through `adb devices -l` that only `emulator-5554` was connected; the affected physical phone was not available for crash capture.
+- Recorded the physical-phone crash as an open acceptance bug and deliberately avoided speculative source changes.
+- Noted a possible configuration mismatch: the screenshot proves Mapbox loaded in the emulator, but the earlier Codex-built APK's printed Dart defines did not include `MAPBOX_ACCESS_TOKEN`.
+- Confirmed current generated config contains a nonempty public `pk.*` Mapbox token, regenerated config, and rebuilt the APK with that token included.
+- Installed/launched the exact rebuilt APK on `emulator-5554`; it remained alive and emitted no filtered AndroidRuntime/native fatal event.
+- Added physical crash capture and clean-build/config comparison instructions to `docs/mobile-map-location.md` and updated timeline, Problems, Known Issues, objectives, session history, and Resume Context here.
+
+Files modified:
+
+- `docs/mobile-map-location.md`.
+- `PROJECT_DATA.md`.
+- `IsokoApp/env.local.json` was regenerated but remains ignored and contains public build configuration only.
+
+Decision:
+
+- Require the actual affected-device fatal exception before changing native map/location code. First compare identical clean builds and runtime configuration.
+
+Problem encountered:
+
+- Debug APK reportedly crashes on a physical phone while the emulator renders Mapbox. Exact phone model, Android version/API, ABI, crash stage, and Logcat are unknown.
+- The first combined regeneration/build command ran from the repository root, so Flutter correctly stopped with `No pubspec.yaml file found`; it was rerun from `IsokoApp` and succeeded.
+
+Current solution/status:
+
+- Known APK now exists at `IsokoApp/build/app/outputs/flutter-apk/app-debug.apk`, size `244142875`, SHA-256 `EA6387BCB6FB91EB7934029401DC70DFA68EABF1B2DF62A61C0BE9E752DFACF6`.
+- Emulator install/launch passes with no filtered fatal. Pending physical-device evidence: uninstall the old phone app, install this exact APK, and capture Logcat if it still crashes.
+
+Remaining work:
+
+- Connect/authorize the physical phone over USB debugging and capture `isoko-phone-crash.txt`.
+- Record model, Android/API level, ABI, free memory/storage, and whether the crash occurs at launch, permission request, or map creation.
+- Apply and verify a fix only after identifying the fatal exception.
+
+Recommended next step:
+
+- Reproduce the crash while the affected phone is connected to ADB and provide the full workspace log file; that is the shortest path to a reliable fix.
+
+## Session Entry: July 31, 2026 - Sign-In Error Mapping Fixed and APK Rebuilt
+
+Date:
+
+- Friday, July 31, 2026.
+
+What was completed:
+
+- Investigated the phone screenshot showing `Choose a stronger password and try again.` during sign-in.
+- Traced the message to the shared Supabase authentication error mapper, not the sign-in form validator or a password-change operation.
+- Added `friendlySignInErrorMessage` and routed `SupabaseAuthRepository.signIn` through it.
+- Preserved specific email-confirmation, rate-limit, and network guidance while changing credential/password failures to `The email or password is incorrect.`
+- Added `test/auth_error_message_test.dart` with two tests and reran the existing location tests.
+- `flutter analyze --no-pub`: passed with no issues.
+- Focused auth-message plus location tests: passed, 9 total.
+- Rebuilt the token-configured Android debug APK: `IsokoApp/build/app/outputs/flutter-apk/app-debug.apk`, 269745978 bytes, SHA-256 `537AE1EDF6CD5A70C6DB79F47DA48584AEFE5FBC8CF39F688DB83021E7FFC8D7`.
+
+Files modified:
+
+- `IsokoApp/lib/features/auth/data/auth_repository.dart`.
+- New `IsokoApp/test/auth_error_message_test.dart`.
+- `PROJECT_DATA.md`.
+
+Remaining work:
+
+- Install this latest APK on the phone after uninstalling the previous one and retry sign-in.
+- If the new message is `The email or password is incorrect.`, verify the exact password/account and Supabase email-confirmation state; the app is now reporting an authentication failure neutrally.
+- Continue physical-device location/map acceptance and capture Logcat only for a true crash.
+
+Recommended next step:
+
+- Clean-install the latest APK, retry the same credentials, and report the exact new message or connect the phone over ADB for log capture.
+
+# Resume Context
+
+You are resuming the ISOKO scooter-lock project on Friday, July 31, 2026 after the native Mapbox/phone-location foundation was implemented and verified locally. Read this entire document plus `docs/four-week-delivery-plan.md`, `docs/mobile-map-location.md`, `docs/mobile-auth-links.md`, and `docs/manufacturer-follow-up-2026-07-26-sim-server-hardware.md` before changing mobile, backend, infrastructure, Supabase, or lock behavior.
+
+Production pilot remains unchanged by the map slice:
+
+- REST API: `https://api.smstechnologieset.com` through Nginx/Let's Encrypt.
+- Raw lock TCP: `62.171.160.225:7000`, plain G168 because current firmware has no TLS.
+- Admin dashboard: `https://test.smstechnologieset.com/`; older Vercel URL also exists.
+- Contabo Ubuntu VPS app: `/opt/scooter-lock`, Unix user `deploy`, PM2 app `scooter-lock-backend`.
+- REST binds `127.0.0.1:3000`; TCP binds `0.0.0.0:7000`; VPS-local PostgreSQL owns scooter/admin operations.
+- UFW exposes 22, 80, 443, and 7000. Real lock/admin lock-unlock previously passed manufacturer testing.
+
+Permanent ownership/security boundaries:
+
+- Supabase owns all rider identities, sessions, profiles, preferences, media, and future rider reservations/rides/payments/history.
+- VPS PostgreSQL owns scooters, lock connections, telemetry, commands, admin operations, and audit data.
+- Never move VPS `DATABASE_URL` to Supabase. Never expose `SUPABASE_SERVICE_ROLE_KEY` to Flutter/Vercel. Rotate the service-role key previously exposed in chat.
+- Authentication alone never authorizes lock control. Reservation/active-ride ownership, eligibility/payment, concurrency, idempotency, parking, command error semantics, unknown-outcome reconciliation, and audit must exist before mobile lock/unlock.
+
+Current rider app:
+
+- Supabase email/password signup, verification, sign-in/out, persisted sessions, profile/preferences loading under RLS, live name/email/private avatar, name/email/password/avatar edits, and password-recovery routing are implemented.
+- Sign-in now uses operation-specific error wording; existing-account credential failures no longer display signup/password-strength instructions.
+- Native ID is `com.smstechnologieset.isoko`; callback is `com.smstechnologieset.isoko://auth/callback`. Supabase Redirect URL setup and physical same-device recovery acceptance remain pending.
+- `mapbox_maps_flutter` 2.27.0 and `geolocator` 14.0.2 are installed.
+- `/enable-location` is a real permission/service/settings/acquisition flow. `/find-scooter` and `/scooter-list` are real native Mapbox screens on Android/iOS.
+- The map centers on the phone and shows the phone puck/accuracy. It has no fake scooters. Web/desktop deliberately show unsupported state under stable Mapbox 2.x.
+- Android has internet/coarse/fine location and SDK 21+. iOS has foreground location text and target 14+; no `ios/Podfile` is currently present.
+- Android Emulator renders Mapbox successfully. Its screenshot location around Amphitheatre Parkway is simulated default emulator GPS and can be changed in Extended controls > Location.
+- The owner reports the debug APK crashes on one physical Android phone. Root cause is unknown because only the emulator was connected to ADB; no phone Logcat/model/API/ABI or crash-stage evidence exists yet.
+- No background location, QR camera/scanner, rider-safe discovery, reservations, persistent rides, parking enforcement, pricing, or payments yet.
+
+Map setup and verification:
+
+- Current generated config contains a public Mapbox token. A fresh token-configured comparison APK was built at `IsokoApp/build/app/outputs/flutter-apk/app-debug.apk` with SHA-256 `EA6387BCB6FB91EB7934029401DC70DFA68EABF1B2DF62A61C0BE9E752DFACF6`.
+- Run `npm.cmd run mobile:env`, then `flutter run --dart-define-from-file=env.local.json` on Android.
+- Never use a secret Mapbox token in Flutter.
+- July 31 verification: Flutter analysis passed, all seven location-controller tests passed, and configured Android debug APK built at `IsokoApp/build/app/outputs/flutter-apk/app-debug.apk`.
+- Latest July 31 verification: auth-message tests plus location tests passed (9 total), analysis passed, and the latest token-configured APK has SHA-256 `537AE1EDF6CD5A70C6DB79F47DA48584AEFE5FBC8CF39F688DB83021E7FFC8D7`.
+- Emulator rendering is visually proven, and the exact fresh APK installed/launched there with no filtered fatal. Physical acceptance is blocked by the reported phone crash; clean-install this artifact and capture phone Logcat before modifying code.
+
+Location truth rules:
+
+- Phone coordinates and scooter-lock coordinates are independent.
+- Factory discontinued cellular base-station positioning due to more than 500 m error, fees, and uncertain foreign support. Do not implement it.
+- Show lock location only from a valid recent GPS fix; otherwise expose stale/unavailable.
+- The future server discovery contract must validate coordinate format, GPS validity, timestamp/age, drift/impossible movement, public scooter code, online/availability, and safe battery fields before Flutter renders scooter markers.
+
+Factory BLE/APN update:
+
+- Factory is preparing firmware for Bluetooth through nRF Toolbox; client has an IoT-experienced collaborator and intended SIM.
+- Bluetooth can be a local maintenance transport to configure/recover APN/domain/port. It does not replace the APN, SIM plan, LTE bands, Rwanda coverage, or 4G TCP path.
+- Treat nRF Toolbox as technician-only. Before relying on it, obtain role/purpose, exact profile, service/characteristic UUIDs, packets/responses/errors, authentication/encryption/per-lock keys, read-back, persistence, wrong-value rollback, offline recovery, final firmware identity, and acceptance evidence.
+- Do not add BLE rider unlock without a separately approved secure per-ride protocol/threat model.
+
+Immediate priorities:
+
+1. Clean-install the latest APK, retry sign-in, and capture full Logcat plus model/Android/API/ABI/crash stage if the phone still crashes.
+2. Complete physical Android map/location acceptance across representative devices; then repeat on signed iOS when the Mac path exists.
+3. Implement a Supabase-rider-protected Fastify discovery endpoint and real map/list scooter data without CCID, raw telemetry, firmware commands, or device secrets.
+4. Fix non-`00` OPEN/LOCK/UPDATE ACK handling before exposing commands to riders.
+5. Complete Supabase callback recovery tests, two-user RLS/private Storage isolation, and service-role-key rotation.
+6. Design Supabase reservation/ride/event data plus trusted Fastify orchestration and command reconciliation before mobile lock control.
+7. Add QR/manual code, authorized ride/end-lock/history, parking policy, and the approved payment/pilot settlement mode.
+8. Continue Play/Apple accounts, signing, legal/store assets, Mac/iOS path, China factory evidence, and staged Rwanda first-arrival acceptance in parallel under `docs/four-week-delivery-plan.md`.
+9. Commit/push the heavily dirty combined working tree carefully; preserve unrelated user changes and all untracked auth/profile/manufacturer/map files.
+
+For every future significant action, update current architecture/status/configuration/dependencies/file history/objectives, preserve historical decisions/problems/session entries, append a Session History entry, and refresh this final Resume Context before ending the session.

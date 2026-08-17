@@ -1,156 +1,179 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+
+import '../../data/auth_repository.dart';
+import '../../data/providers.dart';
 import '../widgets/auth_button.dart';
-import '../widgets/social_auth_button.dart';
+import '../widgets/auth_message.dart';
 import '../widgets/isoko_logo.dart';
 
-/// Sign In screen matching Figma design
-class SignInScreen extends StatefulWidget {
+class SignInScreen extends ConsumerStatefulWidget {
   const SignInScreen({super.key});
 
   @override
-  State<SignInScreen> createState() => _SignInScreenState();
+  ConsumerState<SignInScreen> createState() => _SignInScreenState();
 }
 
-class _SignInScreenState extends State<SignInScreen> {
-  final _phoneController = TextEditingController();
+class _SignInScreenState extends ConsumerState<SignInScreen> {
+  final _formKey = GlobalKey<FormState>();
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
+  bool _obscurePassword = true;
+  bool _submitting = false;
+  String? _error;
 
   @override
   void dispose() {
-    _phoneController.dispose();
+    _emailController.dispose();
+    _passwordController.dispose();
     super.dispose();
+  }
+
+  Future<void> _submit() async {
+    if (!_formKey.currentState!.validate()) return;
+    setState(() {
+      _submitting = true;
+      _error = null;
+    });
+
+    try {
+      await ref.read(authRepositoryProvider).signIn(
+            email: _emailController.text,
+            password: _passwordController.text,
+          );
+      if (mounted) context.go('/account-setup');
+    } on AuthFailure catch (error) {
+      if (mounted) setState(() => _error = error.message);
+    } catch (_) {
+      if (mounted) {
+        setState(
+            () => _error = 'Check your internet connection and try again.');
+      }
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Stack(
-        children: [
-          // Bike image positioned at top right
-          Positioned(
-            top: 40,
-            right: -30,
-            child: Image.asset(
-              'assets/images/bike.png',
-              height: 180,
-              fit: BoxFit.contain,
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(28, 42, 28, 32),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              minHeight: MediaQuery.sizeOf(context).height - 106,
             ),
-          ),
-          
-          SafeArea(
-            child: SingleChildScrollView(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const SizedBox(height: 60),
-                    
-                    // ISOKO Logo
-                    const IsokoLogo(height: 60),
-                
-                const SizedBox(height: 80),
-                
-                // Hello text
-                Text(
-                  'Hello,',
-                  style: Theme.of(context).textTheme.bodyMedium,
-                ),
-                
-                const SizedBox(height: 8),
-                
-                // Sign in Now text
-                Text(
-                  'Sign in Now',
-                  style: Theme.of(context).textTheme.displayMedium,
-                ),
-                
-                const SizedBox(height: 60),
-                
-                // Enter Phone Number label
-                Text(
-                  'Enter Phone Number',
-                  style: Theme.of(context).textTheme.bodyMedium,
-                ),
-                
-                const SizedBox(height: 12),
-                
-                // Phone Number input
-                TextField(
-                  controller: _phoneController,
-                  keyboardType: TextInputType.phone,
-                  style: const TextStyle(color: Colors.white),
-                  decoration: const InputDecoration(
-                    hintText: 'Phone Number',
+            child: Form(
+              key: _formKey,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      const IsokoLogo(height: 64),
+                      Positioned(
+                        right: -72,
+                        top: -26,
+                        child:
+                            Image.asset('assets/images/bike.png', width: 210),
+                      ),
+                    ],
                   ),
-                ),
-                
-                const SizedBox(height: 32),
-                
-                // Continue button
-                AuthButton(
-                  text: 'Continue',
-                  onPressed: () {
-                    // TODO: Implement phone authentication
-                    context.push('/enable-location');
-                  },
-                ),
-                
-                const SizedBox(height: 40),
-                
-                // Or Continue with text
-                Center(
-                  child: Text(
-                    'Or Continue with',
-                    style: Theme.of(context).textTheme.bodyMedium,
+                  const SizedBox(height: 104),
+                  Text('Hello,', style: Theme.of(context).textTheme.bodyMedium),
+                  const SizedBox(height: 8),
+                  Text('Sign in Now',
+                      style: Theme.of(context).textTheme.displayMedium),
+                  const SizedBox(height: 42),
+                  TextFormField(
+                    controller: _emailController,
+                    keyboardType: TextInputType.emailAddress,
+                    textInputAction: TextInputAction.next,
+                    autofillHints: const [AutofillHints.email],
+                    decoration: const InputDecoration(
+                      labelText: 'Email',
+                      hintText: 'you@example.com',
+                      prefixIcon: Icon(Icons.email_outlined),
+                    ),
+                    validator: _validateEmail,
                   ),
-                ),
-                
-                const SizedBox(height: 24),
-                
-                // Google sign in button
-                SocialAuthButton(
-                  icon: Icons.g_mobiledata,
-                  text: 'Continue with Google',
-                  onPressed: () {
-                    // TODO: Implement Google sign in
-                  },
-                ),
-                
-                const SizedBox(height: 16),
-                
-                // Apple sign in button
-                SocialAuthButton(
-                  icon: Icons.apple,
-                  text: 'Continue with Apple',
-                  onPressed: () {
-                    // TODO: Implement Apple sign in
-                  },
-                ),
-                
-                const SizedBox(height: 40),
-                
-                // Don't have an account text
-                Center(
-                  child: GestureDetector(
-                    onTap: () => context.push('/sign-up'),
-                    child: RichText(
-                      text: TextSpan(
-                        text: 'Dont have an account?',
-                        style: Theme.of(context).textTheme.bodyMedium,
+                  const SizedBox(height: 18),
+                  TextFormField(
+                    controller: _passwordController,
+                    obscureText: _obscurePassword,
+                    textInputAction: TextInputAction.done,
+                    autofillHints: const [AutofillHints.password],
+                    onFieldSubmitted: (_) => _submit(),
+                    decoration: InputDecoration(
+                      labelText: 'Password',
+                      prefixIcon: const Icon(Icons.lock_outline),
+                      suffixIcon: IconButton(
+                        tooltip: _obscurePassword
+                            ? 'Show password'
+                            : 'Hide password',
+                        onPressed: () => setState(
+                          () => _obscurePassword = !_obscurePassword,
+                        ),
+                        icon: Icon(_obscurePassword
+                            ? Icons.visibility_outlined
+                            : Icons.visibility_off_outlined),
                       ),
                     ),
+                    validator: (value) => value == null || value.isEmpty
+                        ? 'Enter your password.'
+                        : null,
                   ),
-                ),
-                
-                    const SizedBox(height: 40),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton(
+                      onPressed: _submitting
+                          ? null
+                          : () {
+                              final email = _emailController.text.trim();
+                              final query = email.isEmpty
+                                  ? ''
+                                  : '?email=${Uri.encodeQueryComponent(email)}';
+                              context.push('/forgot-password$query');
+                            },
+                      child: const Text('Forgot password?'),
+                    ),
+                  ),
+                  if (_error != null) ...[
+                    const SizedBox(height: 8),
+                    AuthMessage.error(_error!),
                   ],
-                ),
+                  const SizedBox(height: 28),
+                  AuthButton(
+                    text: 'Sign in',
+                    onPressed: _submit,
+                    isLoading: _submitting,
+                  ),
+                  const SizedBox(height: 26),
+                  Center(
+                    child: TextButton(
+                      onPressed:
+                          _submitting ? null : () => context.go('/sign-up'),
+                      child: const Text('Create an account'),
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
-        ],
+        ),
       ),
     );
   }
+}
+
+String? _validateEmail(String? value) {
+  final email = value?.trim() ?? '';
+  if (email.isEmpty) return 'Enter your email address.';
+  if (!RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(email)) {
+    return 'Enter a valid email address.';
+  }
+  return null;
 }

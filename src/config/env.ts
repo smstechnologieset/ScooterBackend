@@ -20,6 +20,9 @@ const envSchema = z.object({
   TCP_PORT: z.coerce.number().int().positive().default(7000),
   DATABASE_URL: z.string().min(1),
   JWT_SECRET: z.string().min(32),
+  SUPABASE_URL: z.string().url().optional(),
+  SUPABASE_PUBLISHABLE_KEY: z.string().min(1).optional(),
+  SUPABASE_ANON_KEY: z.string().min(1).optional(),
   TCP_MAX_FRAME_BYTES: z.coerce.number().int().positive().default(2048),
   HEARTBEAT_TIMEOUT_MS: z.coerce.number().int().positive().default(180000),
   COMMAND_TIMEOUT_MS: z.coerce.number().int().positive().default(25000),
@@ -50,6 +53,14 @@ const envSchema = z.object({
   PROTOCOL_DUPLICATE_PACKET_MODE: z.enum(["record-only", "ack-again", "drop"]).default("ack-again"),
   PROTOCOL_AUTH_FLOW: z.enum(["unspecified", "register-version", "author-command", "disabled"]).default("register-version"),
   PROTOCOL_REGISTER_ACK_PAYLOAD: z.string().min(1).default("pubbike")
+}).superRefine((value, context) => {
+  const hasClientKey = Boolean(value.SUPABASE_PUBLISHABLE_KEY || value.SUPABASE_ANON_KEY);
+  if (Boolean(value.SUPABASE_URL) !== hasClientKey) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "SUPABASE_URL and a Supabase publishable/anon key must be configured together."
+    });
+  }
 });
 
 const parsedEnv = envSchema.safeParse(process.env);
@@ -78,6 +89,10 @@ export interface AppConfig {
   };
   databaseUrl: string;
   jwtSecret: string;
+  supabase: {
+    url: string;
+    apiKey: string;
+  } | null;
   protocol: ProtocolRuntimeConfig;
 }
 
@@ -99,6 +114,13 @@ export const appConfig: AppConfig = {
   },
   databaseUrl: env.DATABASE_URL,
   jwtSecret: env.JWT_SECRET,
+  supabase:
+    env.SUPABASE_URL && (env.SUPABASE_PUBLISHABLE_KEY || env.SUPABASE_ANON_KEY)
+      ? {
+          url: env.SUPABASE_URL,
+          apiKey: env.SUPABASE_PUBLISHABLE_KEY ?? env.SUPABASE_ANON_KEY!
+        }
+      : null,
   protocol: {
     version: env.PROTOCOL_VERSION,
     fieldSeparator: env.PROTOCOL_FIELD_SEPARATOR,

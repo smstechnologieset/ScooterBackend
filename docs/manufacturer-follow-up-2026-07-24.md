@@ -77,10 +77,13 @@ Solar = 370
 Result = charging
 ```
 
-Open interpretation:
+Stateful hysteresis:
 
-- The response implies hysteresis between `battery voltage` and `battery voltage + 10`, but it does not explicitly say whether the previous charging state should be retained in that band.
-- The current schema does not persist raw battery/solar voltage or charging state. Add those fields in a deliberate telemetry-schema change rather than guessing from percentage alone.
+- Enter charging when `solar >= battery + 10`.
+- Exit charging when `solar < battery`.
+- Between those thresholds, retain the previous charging state.
+- If the server has no previous state, for example immediately after restart, report charging state as unknown until an entry or exit threshold is crossed.
+- The current schema does not persist raw battery/solar voltage or charging state. Add those fields in a deliberate telemetry-schema change.
 
 ## 4. GPS and Movement/Parking
 
@@ -220,4 +223,3 @@ Correction:
 - Admin UI no longer adds `%` to an unconfirmed raw signal scale.
 - Low-battery attention threshold is below 25%.
 - Existing stored values correct themselves when the lock sends the next STATUS/heartbeat after deployment.
-

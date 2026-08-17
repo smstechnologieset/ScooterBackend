@@ -7,6 +7,7 @@ import { TcpSocketManager } from "./tcp/socketManager";
 import { CommandDispatcher } from "./services/commandDispatcher";
 import { DeviceService } from "./services/deviceService";
 import { RideService } from "./services/rideService";
+import { SupabaseRiderIdentityVerifier } from "./services/riderIdentityVerifier";
 import { buildApiServer } from "./api/server";
 import { logger } from "./utils/logger";
 import { ProtocolSequenceGenerator } from "./utils/sequence";
@@ -27,10 +28,12 @@ async function main(): Promise<void> {
   );
   const deviceService = new DeviceService(deviceRepository);
   const rideService = new RideService(deviceRepository);
+  const riderIdentityVerifier = new SupabaseRiderIdentityVerifier(appConfig.supabase);
   const api = await buildApiServer(appConfig, {
     commands: commandDispatcher,
     devices: deviceService,
-    rides: rideService
+    rides: rideService,
+    riderIdentityVerifier
   });
 
   await tcpSocketManager.start();

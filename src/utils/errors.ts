@@ -17,3 +17,7 @@ export class UnauthorizedError extends Error {
 export class ForbiddenError extends Error {
   public override readonly name = "ForbiddenError";
 }
+
+export class ServiceUnavailableError extends Error {
+  public override readonly name = "ServiceUnavailableError";
+}

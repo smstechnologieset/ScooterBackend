@@ -5,6 +5,7 @@ import {
   ForbiddenError,
   NotFoundError,
   OfflineScooterError,
+  ServiceUnavailableError,
   UnauthorizedError
 } from "../utils/errors";
 
@@ -43,7 +44,12 @@ export async function errorHandler(error: FastifyError, _request: FastifyRequest
   }
 
   if (error instanceof ForbiddenError || error.statusCode === 403) {
-    await reply.status(403).send({ error: "forbidden", message: "Admin access required." });
+    await reply.status(403).send({ error: "forbidden", message: error.message || "Access denied." });
+    return;
+  }
+
+  if (error instanceof ServiceUnavailableError) {
+    await reply.status(503).send({ error: "service_unavailable", message: error.message });
     return;
   }
 

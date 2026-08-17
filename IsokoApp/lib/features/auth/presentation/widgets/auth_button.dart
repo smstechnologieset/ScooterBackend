@@ -3,12 +3,14 @@ import 'package:flutter/material.dart';
 /// Primary authentication button widget
 class AuthButton extends StatelessWidget {
   final String text;
-  final VoidCallback onPressed;
-  
+  final VoidCallback? onPressed;
+  final bool isLoading;
+
   const AuthButton({
     super.key,
     required this.text,
     required this.onPressed,
+    this.isLoading = false,
   });
 
   @override
@@ -16,8 +18,17 @@ class AuthButton extends StatelessWidget {
     return SizedBox(
       width: double.infinity,
       child: ElevatedButton(
-        onPressed: onPressed,
-        child: Text(text),
+        onPressed: isLoading ? null : onPressed,
+        child: isLoading
+            ? const SizedBox(
+                width: 22,
+                height: 22,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2.5,
+                  color: Colors.white,
+                ),
+              )
+            : Text(text),
       ),
     );
   }

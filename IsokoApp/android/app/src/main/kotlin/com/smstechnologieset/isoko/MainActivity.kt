@@ -1,4 +1,4 @@
-package com.example.isoko_scooter
+package com.smstechnologieset.isoko
 
 import io.flutter.embedding.android.FlutterActivity
 
