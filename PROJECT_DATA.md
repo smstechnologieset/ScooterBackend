@@ -7363,5 +7363,6 @@ Future priorities (When Hardware & SIM Cards Arrive):
   6. Successfully deployed to production VPS (`api.smstechnologieset.com`): code pulled via `git pull --ff-only origin main`, recompiled with `npm run build`, and PM2 process `scooter-lock-backend` restarted. Verified public health check (`{"ok":true}`), admin login endpoint, and live fleet data with 9 real registered scooters.
   7. Verified live Vercel admin dashboard deployment at `https://scooter-backend-nu.vercel.app/` connected to live VPS backend.
   8. Unified Admin Web API configuration: removed localhost:3000 branching so that both local Vite dev and Vercel production consoles target the single production VPS API (`https://api.smstechnologieset.com`) directly. Stopped redundant local backend process.
+  9. Operational rule: Proactively notify the user whenever backend or database schema modifications are committed that require a VPS git pull, always providing the exact commands to pull, rebuild, and restart via PM2.
 
 For every future significant action, update current architecture/status/configuration/dependencies/file history/objectives, preserve historical decisions/problems/session entries, append a Session History entry, and refresh this final Resume Context before ending the session.
