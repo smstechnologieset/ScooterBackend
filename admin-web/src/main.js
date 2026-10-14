@@ -318,7 +318,7 @@ async function refreshFleet() {
     const response = await requestJson(`/admin/fleet?limit=500`, { method: "GET" });
     state.fleet = response;
     const count = response.scooters?.length ?? 0;
-    state.notice = count > 0 ? `Fleet updated: ${count} scooter${count === 1 ? "" : "s"} online.` : null;
+    state.notice = count > 0 ? `Fleet updated: ${count} scooter${count === 1 ? "" : "s"} loaded.` : null;
     if (!state.selectedId && count > 0) {
       state.selectedId = response.scooters[0]?.id ?? null;
     }
