@@ -7,3 +7,5 @@ coverage/
 *.log
 prisma/dev.db
 IsokoApp/env.local.json
+IsokoApp/flutter_*.png
+.vscode/

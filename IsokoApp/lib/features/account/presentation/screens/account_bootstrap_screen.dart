@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../core/localization/app_localizations.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../auth/data/auth_repository.dart';
 import '../../../auth/data/providers.dart';
@@ -60,42 +61,111 @@ class _AccountBootstrapScreenState
 
   @override
   Widget build(BuildContext context) {
+    final tr = context.tr;
+
     return Scaffold(
+      backgroundColor: context.scaffoldBg,
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(28),
-          child: Column(
-            children: [
-              const Spacer(),
-              const IsokoLogo(height: 58),
-              const SizedBox(height: 42),
-              if (_error == null) ...[
-                const CircularProgressIndicator(),
-                const SizedBox(height: 24),
-                Text(
-                  'Preparing your account...',
-                  style: Theme.of(context).textTheme.titleLarge,
+        child: SizedBox(
+          width: double.infinity,
+          height: double.infinity,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 28),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                const Spacer(),
+                const Center(
+                  child: IsokoLogo(height: 64),
                 ),
-              ] else ...[
-                const Icon(Icons.cloud_off, color: AppTheme.danger, size: 44),
-                const SizedBox(height: 20),
-                Text(
-                  _error!,
-                  textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.bodyLarge,
-                ),
-                const SizedBox(height: 28),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: _bootstrap,
-                    child: const Text('Try again'),
+                const SizedBox(height: 48),
+                if (_error == null) ...[
+                  const Center(
+                    child: SizedBox(
+                      width: 48,
+                      height: 48,
+                      child: CircularProgressIndicator(
+                        color: AppTheme.primaryGreen,
+                        strokeWidth: 3,
+                      ),
+                    ),
                   ),
-                ),
-                TextButton(onPressed: _signOut, child: const Text('Sign out')),
+                  const SizedBox(height: 28),
+                  Text(
+                    tr.preparingAccount,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: context.textPrimary,
+                      fontSize: 20,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: -0.3,
+                    ),
+                  ),
+                ] else ...[
+                  Container(
+                    width: 56,
+                    height: 56,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF2E1518),
+                      shape: BoxShape.circle,
+                      border: Border.all(color: AppTheme.danger.withAlpha(80)),
+                    ),
+                    child: const Icon(
+                      Icons.cloud_off_rounded,
+                      color: AppTheme.danger,
+                      size: 28,
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  Text(
+                    _error!,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 28),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 52,
+                    child: ElevatedButton(
+                      onPressed: _bootstrap,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppTheme.primaryGreen,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        elevation: 0,
+                      ),
+                      child: Text(
+                        tr.tryAgain,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextButton(
+                    onPressed: _signOut,
+                    child: Text(
+                      tr.logout,
+                      style: const TextStyle(
+                        color: Color(0xFF7A8B83),
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+                const Spacer(),
               ],
-              const Spacer(),
-            ],
+            ),
           ),
         ),
       ),

@@ -12,7 +12,7 @@ class AppConfig {
   );
   static const String supabaseUrl = String.fromEnvironment(
     'SUPABASE_URL',
-    defaultValue: '',
+    defaultValue: 'https://jvshfztgfgzlvgznajge.supabase.co',
   );
   static const String supabasePublishableKey = String.fromEnvironment(
     'SUPABASE_PUBLISHABLE_KEY',
@@ -20,7 +20,8 @@ class AppConfig {
   );
   static const String supabaseAnonKey = String.fromEnvironment(
     'SUPABASE_ANON_KEY',
-    defaultValue: '',
+    defaultValue:
+        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp2c2hmenRnZmd6bHZnem5hamdlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ2MjM1OTcsImV4cCI6MjEwMDE5OTU5N30.SN3X8Cf8dJ5_OC7HaWjus4WPuaWRm9fQYVAkrPAr5GU',
   );
   static const String authRedirectUrl = String.fromEnvironment(
     'AUTH_REDIRECT_URL',

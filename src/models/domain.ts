@@ -36,6 +36,18 @@ export interface Scooter {
   updatedAt: Date;
 }
 
+export interface RiderScooter {
+  id: string;
+  deviceId: string;
+  batteryPercent: number | null;
+  lockState: LockState;
+  rideState: RideState;
+  online: boolean;
+  latitude: number | null;
+  longitude: number | null;
+  lastGpsAt: Date | null;
+}
+
 export interface ScooterConnectionRecord {
   id: string;
   scooterId: string | null;

@@ -1,7 +1,13 @@
 import 'package:go_router/go_router.dart';
 
+import '../../../features/account/presentation/screens/faq_screen.dart';
+import '../../../features/account/presentation/screens/menu_screen.dart';
 import '../../../features/account/presentation/screens/profile_screen.dart';
-import '../../../features/mock/presentation/screens/mock_screens.dart';
+import '../../../features/account/presentation/screens/referral_screen.dart';
+import '../../../features/account/presentation/screens/settings_screen.dart';
+import '../../../features/account/presentation/screens/transactions_screen.dart';
+import '../../../features/account/presentation/screens/tutorial_screen.dart';
+import '../../../features/ride/presentation/screens/ride_history_screen.dart';
 
 final accountRoutes = <RouteBase>[
   GoRoute(

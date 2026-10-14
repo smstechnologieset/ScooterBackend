@@ -25,4 +25,23 @@ class UserPreferences {
       marketingNotifications: json['marketing_notifications'] as bool,
     );
   }
+
+  UserPreferences copyWith({
+    String? userId,
+    String? languageCode,
+    String? currencyCode,
+    String? distanceUnit,
+    bool? rideNotifications,
+    bool? marketingNotifications,
+  }) {
+    return UserPreferences(
+      userId: userId ?? this.userId,
+      languageCode: languageCode ?? this.languageCode,
+      currencyCode: currencyCode ?? this.currencyCode,
+      distanceUnit: distanceUnit ?? this.distanceUnit,
+      rideNotifications: rideNotifications ?? this.rideNotifications,
+      marketingNotifications:
+          marketingNotifications ?? this.marketingNotifications,
+    );
+  }
 }

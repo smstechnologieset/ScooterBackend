@@ -16,7 +16,7 @@ void main() {
         child: const IsokoApp(),
       ),
     );
-    await tester.pump(const Duration(milliseconds: 100));
+    await tester.pumpAndSettle();
 
     expect(find.text('Sign in Now'), findsOneWidget);
     expect(find.text('Sign in'), findsOneWidget);

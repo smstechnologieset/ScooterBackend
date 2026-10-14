@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../core/localization/app_localizations.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../auth/presentation/widgets/isoko_logo.dart';
 import '../../data/providers.dart';
@@ -21,7 +22,12 @@ class _EnableLocationScreenState extends ConsumerState<EnableLocationScreen>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref.read(locationControllerProvider.notifier).inspect();
+      final loc = ref.read(locationControllerProvider);
+      if (loc.status == LocationStatus.ready && loc.location != null) {
+        if (mounted) context.go('/find-scooter');
+      } else {
+        ref.read(locationControllerProvider.notifier).inspect();
+      }
     });
   }
 
@@ -43,93 +49,170 @@ class _EnableLocationScreenState extends ConsumerState<EnableLocationScreen>
     final location = ref.watch(locationControllerProvider);
 
     ref.listen<LocationState>(locationControllerProvider, (previous, next) {
-      if (next.status == LocationStatus.ready &&
-          next.location != null &&
-          previous?.status != LocationStatus.ready) {
+      if (next.status == LocationStatus.ready && next.location != null) {
         context.go('/find-scooter');
       }
     });
 
-    final content = _contentFor(location);
+    final isBusy = location.isBusy;
+    final isReady = location.status == LocationStatus.ready;
+
+    final tr = context.tr;
 
     return Scaffold(
+      backgroundColor: context.scaffoldBg,
       body: Stack(
         children: [
-          const Positioned.fill(child: _LocationBackdrop()),
-          Positioned(
-            top: 96,
-            right: -48,
-            child: Image.asset(
-              'assets/images/bike.png',
-              width: 230,
-              fit: BoxFit.contain,
-            ),
+          // Background Roadmap pattern
+          const Positioned.fill(
+            child: _LocationBackdrop(),
           ),
+
+          // Top Header: Hamburger on Left + ISOKO Logo Centered
           SafeArea(
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(22, 14, 22, 0),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   IconButton(
-                    tooltip: 'Menu',
-                    onPressed: () => context.go('/menu'),
-                    icon: const Icon(Icons.menu, size: 30),
+                    icon: Icon(
+                      Icons.menu_rounded,
+                      color: context.textPrimary,
+                      size: 28,
+                    ),
+                    onPressed: () => context.push('/menu'),
                   ),
-                  const IsokoLogo(height: 38),
-                  const SizedBox(width: 48),
+                  const Expanded(
+                    child: Center(
+                      child: Padding(
+                        padding: EdgeInsets.only(right: 48),
+                        child: IsokoLogo(height: 38),
+                      ),
+                    ),
+                  ),
                 ],
               ),
             ),
           ),
-          Align(
-            alignment: Alignment.bottomCenter,
+
+          // Bottom Sheet Card matching enable-location-screen.png
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
             child: SafeArea(
               top: false,
               child: Container(
-                width: double.infinity,
-                constraints: const BoxConstraints(maxWidth: 620),
-                padding: const EdgeInsets.fromLTRB(28, 44, 28, 30),
-                decoration: const BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [Color(0x00101512), Color(0xFF080B09)],
-                    stops: [0, 0.28],
+                margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                padding: const EdgeInsets.fromLTRB(22, 22, 22, 22),
+                decoration: BoxDecoration(
+                  color: context.surfaceBg,
+                  borderRadius: BorderRadius.circular(24),
+                  border: Border.all(
+                    color: context.cardBorder,
+                    width: 1.2,
                   ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: context.isDarkMode
+                          ? Colors.black.withAlpha(120)
+                          : Colors.black.withAlpha(20),
+                      blurRadius: 20,
+                      offset: const Offset(0, 8),
+                    ),
+                  ],
                 ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Text(
-                      content.title,
-                      style: Theme.of(context).textTheme.displayMedium,
-                    ),
-                    const SizedBox(height: 14),
-                    Text(
-                      content.message,
-                      style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                            color: AppTheme.textSecondary,
+                    // Top row: Title + Subtitle on Left, Bike on Right
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                tr.getIsokoAnywhere,
+                                style: TextStyle(
+                                  color: context.textPrimary,
+                                  fontSize: 26,
+                                  fontWeight: FontWeight.w900,
+                                  height: 1.15,
+                                  letterSpacing: -0.3,
+                                ),
+                              ),
+                              const SizedBox(height: 10),
+                              Text(
+                                tr.pleaseAllowLocation,
+                                style: TextStyle(
+                                  color: context.textSecondary,
+                                  fontSize: 13.5,
+                                  fontWeight: FontWeight.w500,
+                                  height: 1.4,
+                                ),
+                              ),
+                            ],
                           ),
+                        ),
+                        const SizedBox(width: 12),
+                        Image.asset(
+                          'assets/images/bike.png',
+                          width: 125,
+                          height: 100,
+                          fit: BoxFit.contain,
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 28),
+
+                    const SizedBox(height: 24),
+
+                    // Enable Location solid green button
                     SizedBox(
                       width: double.infinity,
-                      child: ElevatedButton.icon(
-                        onPressed: location.isBusy
-                            ? null
-                            : () => _handlePrimary(location),
-                        icon: location.isBusy
-                            ? const SizedBox.square(
-                                dimension: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2.2,
-                                  color: Colors.white,
-                                ),
+                      height: 52,
+                      child: ElevatedButton(
+                        onPressed: isBusy ? null : () => _handlePrimary(location),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppTheme.primaryGreen,
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          elevation: 0,
+                        ),
+                        child: isBusy
+                            ? Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  const SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2.5,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Text(
+                                    tr.findingLocation,
+                                    style: const TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
+                                ],
                               )
-                            : Icon(content.icon),
-                        label: Text(content.buttonLabel),
+                            : Text(
+                                isReady ? tr.openMap : tr.enableLocation,
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: 0.3,
+                                ),
+                              ),
                       ),
                     ),
                   ],
@@ -164,85 +247,33 @@ class _EnableLocationScreenState extends ConsumerState<EnableLocationScreen>
   }
 }
 
-class _LocationContent {
-  const _LocationContent({
-    required this.title,
-    required this.message,
-    required this.buttonLabel,
-    required this.icon,
-  });
-
-  final String title;
-  final String message;
-  final String buttonLabel;
-  final IconData icon;
-}
-
-_LocationContent _contentFor(LocationState state) {
-  return switch (state.status) {
-    LocationStatus.serviceDisabled => _LocationContent(
-        title: 'Turn on location',
-        message: state.message ?? 'Location Services are turned off.',
-        buttonLabel: 'Open location settings',
-        icon: Icons.settings_outlined,
-      ),
-    LocationStatus.permissionDeniedForever => _LocationContent(
-        title: 'Location is blocked',
-        message: state.message ?? 'Allow location from your device settings.',
-        buttonLabel: 'Open app settings',
-        icon: Icons.settings_outlined,
-      ),
-    LocationStatus.unavailable => _LocationContent(
-        title: 'Location unavailable',
-        message: state.message ?? 'Move to an open area and try again.',
-        buttonLabel: 'Try again',
-        icon: Icons.refresh,
-      ),
-    LocationStatus.ready => const _LocationContent(
-        title: 'Location ready',
-        message: 'Your position is ready on the map.',
-        buttonLabel: 'Open map',
-        icon: Icons.map_outlined,
-      ),
-    LocationStatus.checking ||
-    LocationStatus.requesting =>
-      const _LocationContent(
-        title: 'Finding your location',
-        message: 'This usually takes only a moment.',
-        buttonLabel: 'Please wait',
-        icon: Icons.my_location,
-      ),
-    LocationStatus.idle || LocationStatus.permissionDenied => _LocationContent(
-        title: 'Find scooters nearby',
-        message: state.message ??
-            'Allow location while using ISOKO to see your position.',
-        buttonLabel: 'Enable location',
-        icon: Icons.location_on_outlined,
-      ),
-  };
-}
-
 class _LocationBackdrop extends StatelessWidget {
   const _LocationBackdrop();
 
   @override
   Widget build(BuildContext context) {
     return ColoredBox(
-      color: AppTheme.backgroundColor,
-      child: CustomPaint(painter: _LocationBackdropPainter()),
+      color: context.scaffoldBg,
+      child: CustomPaint(
+        painter: _LocationBackdropPainter(isDark: context.isDarkMode),
+      ),
     );
   }
 }
 
 class _LocationBackdropPainter extends CustomPainter {
+  const _LocationBackdropPainter({required this.isDark});
+
+  final bool isDark;
+
   @override
   void paint(Canvas canvas, Size size) {
     final road = Paint()
-      ..color = const Color(0xFF1A211E)
+      ..color = isDark ? const Color(0xFF1B231F) : const Color(0xFFE2EBE6)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 2;
     final minorRoad = Paint()
-      ..color = const Color(0xFF121815)
+      ..color = isDark ? const Color(0xFF141916) : const Color(0xFFEBF2EE)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1;
 
@@ -277,13 +308,13 @@ class _LocationBackdropPainter extends CustomPainter {
     }
 
     canvas.drawCircle(
-      Offset(size.width * 0.35, size.height * 0.42),
-      9,
+      Offset(size.width * 0.32, size.height * 0.46),
+      8,
       Paint()..color = AppTheme.primaryGreen,
     );
     canvas.drawCircle(
-      Offset(size.width * 0.35, size.height * 0.42),
-      34,
+      Offset(size.width * 0.32, size.height * 0.46),
+      32,
       Paint()..color = AppTheme.primaryGreen.withAlpha(38),
     );
   }

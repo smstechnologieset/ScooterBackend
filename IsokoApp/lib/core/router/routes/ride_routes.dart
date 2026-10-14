@@ -1,22 +1,20 @@
 import 'package:go_router/go_router.dart';
 
-import '../../../features/mock/presentation/screens/mock_screens.dart';
+import '../../../features/ride/presentation/screens/end_ride_screen.dart';
+import '../../../features/ride/presentation/screens/invalid_parking_screen.dart';
+import '../../../features/ride/presentation/screens/parking_photo_screen.dart';
+import '../../../features/ride/presentation/screens/ride_active_screen.dart';
 
 final rideRoutes = <RouteBase>[
   GoRoute(
-    path: '/start-ride',
-    name: 'start-ride',
-    builder: (context, state) => const StartRideScreen(),
-  ),
-  GoRoute(
     path: '/ride-active',
     name: 'ride-active',
-    builder: (context, state) => const RideStatusScreen(),
+    builder: (context, state) => const RideActiveScreen(),
   ),
   GoRoute(
     path: '/ride-paused',
     name: 'ride-paused',
-    builder: (context, state) => const RideStatusScreen(paused: true),
+    builder: (context, state) => const RideActiveScreen(),
   ),
   GoRoute(
     path: '/end-ride',
@@ -24,13 +22,13 @@ final rideRoutes = <RouteBase>[
     builder: (context, state) => const EndRideScreen(),
   ),
   GoRoute(
-    path: '/take-picture',
-    name: 'take-picture',
-    builder: (context, state) => const TakePictureScreen(),
+    path: '/parking-photo',
+    name: 'parking-photo',
+    builder: (context, state) => const ParkingPhotoScreen(),
   ),
   GoRoute(
-    path: '/invalid-parking-zone',
-    name: 'invalid-parking-zone',
-    builder: (context, state) => const InvalidParkingZoneScreen(),
+    path: '/invalid-parking',
+    name: 'invalid-parking',
+    builder: (context, state) => const InvalidParkingScreen(),
   ),
 ];

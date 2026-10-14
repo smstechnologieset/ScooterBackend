@@ -29,12 +29,19 @@ void main() {
 
   testWidgets('updates rider name and requests an email change',
       (tester) async {
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+
     await _pumpProfile(tester, profile, repository);
 
     final fields = find.byType(TextFormField);
+    await tester.ensureVisible(fields.at(0));
     await tester.enterText(fields.at(0), 'Rider Updated');
+    await tester.ensureVisible(fields.at(1));
     await tester.enterText(fields.at(1), 'new@example.com');
-    await tester.tap(find.widgetWithText(ElevatedButton, 'Save changes'));
+    await tester.ensureVisible(find.text('Save changes'));
+    await tester.tap(find.text('Save changes'));
     await tester.pumpAndSettle();
 
     expect(repository.updatedName, 'Rider Updated');
@@ -47,18 +54,21 @@ void main() {
 
   testWidgets('verifies the current password before changing it',
       (tester) async {
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+
     await _pumpProfile(tester, profile, repository);
 
     final fields = find.byType(TextFormField);
+    await tester.ensureVisible(fields.at(2));
     await tester.enterText(fields.at(2), 'current-password');
+    await tester.ensureVisible(fields.at(3));
     await tester.enterText(fields.at(3), 'new-password-123');
+    await tester.ensureVisible(fields.at(4));
     await tester.enterText(fields.at(4), 'new-password-123');
-    await tester.ensureVisible(
-      find.widgetWithText(OutlinedButton, 'Update password'),
-    );
-    await tester.tap(
-      find.widgetWithText(OutlinedButton, 'Update password'),
-    );
+    await tester.ensureVisible(find.text('Update password'));
+    await tester.tap(find.text('Update password'));
     await tester.pumpAndSettle();
 
     expect(repository.currentPassword, 'current-password');

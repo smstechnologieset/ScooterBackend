@@ -1,5 +1,5 @@
 import { DeviceRepository } from "../repositories/deviceRepository";
-import { Scooter } from "../models/domain";
+import { RiderScooter, Scooter } from "../models/domain";
 import { NotFoundError } from "../utils/errors";
 
 const lowBatteryThresholdPercent = 25;
@@ -28,6 +28,42 @@ export class DeviceService {
     return {
       metrics: buildFleetMetrics(scooters),
       scooters
+    };
+  }
+
+  public async listAvailableScooters(limit = 100): Promise<RiderScooter[]> {
+    const scooters = await this.devices.listScooters(limit);
+    return scooters.map((s) => ({
+      id: s.id,
+      deviceId: s.deviceId,
+      batteryPercent: s.batteryPercent,
+      lockState: s.lockState,
+      rideState: s.rideState,
+      online: s.status === "online",
+      latitude: s.latitude,
+      longitude: s.longitude,
+      lastGpsAt: s.lastGpsAt
+    }));
+  }
+
+  public async findByCode(codeOrId: string): Promise<RiderScooter | null> {
+    let scooter = await this.devices.findScooterByDeviceId(codeOrId);
+    if (!scooter) {
+      scooter = await this.devices.findScooterById(codeOrId);
+    }
+    if (!scooter) {
+      return null;
+    }
+    return {
+      id: scooter.id,
+      deviceId: scooter.deviceId,
+      batteryPercent: scooter.batteryPercent,
+      lockState: scooter.lockState,
+      rideState: scooter.rideState,
+      online: scooter.status === "online",
+      latitude: scooter.latitude,
+      longitude: scooter.longitude,
+      lastGpsAt: scooter.lastGpsAt
     };
   }
 

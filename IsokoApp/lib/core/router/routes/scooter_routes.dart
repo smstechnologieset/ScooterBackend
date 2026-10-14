@@ -1,8 +1,9 @@
 import 'package:go_router/go_router.dart';
 
 import '../../../features/map/presentation/screens/scooter_map_screen.dart';
-import '../../../features/mock/presentation/screens/mock_screens.dart'
-    show BikeUnlockedScreen, QrScanScreen, UnlockingScreen, UnlockNumberScreen;
+import '../../../features/ride/presentation/screens/unlocking_screen.dart';
+import '../../../features/scan/presentation/screens/manual_code_screen.dart';
+import '../../../features/scan/presentation/screens/qr_scan_screen.dart';
 
 final scooterRoutes = <RouteBase>[
   GoRoute(
@@ -27,16 +28,11 @@ final scooterRoutes = <RouteBase>[
   GoRoute(
     path: '/unlock-number',
     name: 'unlock-number',
-    builder: (context, state) => const UnlockNumberScreen(),
+    builder: (context, state) => const ManualCodeScreen(),
   ),
   GoRoute(
     path: '/unlocking',
     name: 'unlocking',
     builder: (context, state) => const UnlockingScreen(),
-  ),
-  GoRoute(
-    path: '/unlocked',
-    name: 'unlocked',
-    builder: (context, state) => const BikeUnlockedScreen(),
   ),
 ];

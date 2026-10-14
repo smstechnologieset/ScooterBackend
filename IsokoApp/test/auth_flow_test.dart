@@ -25,14 +25,20 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    await tester.ensureVisible(find.text('Create an account'));
     await tester.tap(find.text('Create an account'));
     await tester.pumpAndSettle();
 
     final fields = find.byType(TextFormField);
+    await tester.ensureVisible(fields.at(0));
     await tester.enterText(fields.at(0), 'Rider One');
+    await tester.ensureVisible(fields.at(1));
     await tester.enterText(fields.at(1), 'rider@example.com');
+    await tester.ensureVisible(fields.at(2));
     await tester.enterText(fields.at(2), 'strong-password');
+    await tester.ensureVisible(fields.at(3));
     await tester.enterText(fields.at(3), 'strong-password');
+    await tester.ensureVisible(find.widgetWithText(ElevatedButton, 'Create account'));
     await tester.tap(find.widgetWithText(ElevatedButton, 'Create account'));
     await tester.pumpAndSettle();
 

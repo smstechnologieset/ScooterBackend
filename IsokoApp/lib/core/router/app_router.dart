@@ -16,10 +16,16 @@ final appRouterProvider = Provider<GoRouter>((ref) {
   final authRefresh = ref.watch(authRefreshProvider);
 
   return GoRouter(
-    initialLocation: '/sign-in',
+    initialLocation: '/splash',
     refreshListenable: authRefresh,
     redirect: (context, state) {
       final location = state.matchedLocation;
+
+      // Allow the animated splash screen to display on startup
+      if (location == '/splash') {
+        return null;
+      }
+
       final isPublicAuthRoute = location == '/sign-in' ||
           location == '/sign-up' ||
           location == '/check-email' ||

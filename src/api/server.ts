@@ -8,6 +8,7 @@ import { RiderIdentityVerifier } from "../services/riderIdentityVerifier";
 import { registerAuth } from "./auth";
 import { errorHandler } from "./errorHandler";
 import { registerAdminRoutes } from "./routes/admin";
+import { registerRiderRoutes } from "./routes/rider";
 import { registerScooterRoutes } from "./routes/scooters";
 
 export async function buildApiServer(
@@ -46,6 +47,7 @@ export async function buildApiServer(
 
   app.get("/health", async () => ({ ok: true }));
   await registerAdminRoutes(app, { commands: services.commands, devices: services.devices });
+  await registerRiderRoutes(app, { devices: services.devices });
   await registerScooterRoutes(app, services);
 
   return app;

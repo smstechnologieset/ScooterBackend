@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-/// App theme configuration matching the Figma design
+/// App theme configuration matching the ISOKO brand design
 class AppTheme {
   static const Color primaryGreen = Color(0xFF24D47E);
   static const Color primaryGreenDark = Color(0xFF10985B);
+  static const Color primaryGreenLight = Color(0xFFE8FBF2);
+
+  // Dark Theme Colors
   static const Color backgroundColor = Color(0xFF050706);
   static const Color surface = Color(0xFF121514);
   static const Color surfaceElevated = Color(0xFF1B201E);
@@ -16,6 +19,18 @@ class AppTheme {
   static const Color textMuted = Color(0xFF737A76);
   static const Color inputBackground = Color(0xFF171B19);
   static const Color danger = Color(0xFFE43F5A);
+
+  // Light Theme Colors
+  static const Color lightBackgroundColor = Color(0xFFF6F8F7);
+  static const Color lightSurface = Color(0xFFFFFFFF);
+  static const Color lightSurfaceElevated = Color(0xFFEFF3F0);
+  static const Color lightPanelBackground = Color(0xF2FFFFFF);
+  static const Color lightCardBackground = Color(0xFFFFFFFF);
+  static const Color lightCardBorder = Color(0xFFE2E8E5);
+  static const Color lightTextPrimary = Color(0xFF111815);
+  static const Color lightTextSecondary = Color(0xFF5A6660);
+  static const Color lightTextMuted = Color(0xFF8C9993);
+  static const Color lightInputBackground = Color(0xFFEFF3F1);
 
   static const double radiusSmall = 10;
   static const double radiusMedium = 16;
@@ -42,7 +57,8 @@ class AppTheme {
         color: textSecondary,
         height: 1.35,
       );
-  
+
+  /// Dark Theme
   static ThemeData get darkTheme {
     final baseTextTheme = GoogleFonts.interTextTheme();
 
@@ -58,7 +74,6 @@ class AppTheme {
         surface: surface,
         error: danger,
       ),
-      
       textTheme: baseTextTheme.copyWith(
         displayLarge: GoogleFonts.inter(
           fontSize: 32,
@@ -91,7 +106,6 @@ class AppTheme {
           height: 1.35,
         ),
       ),
-      
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: inputBackground,
@@ -107,14 +121,14 @@ class AppTheme {
           borderRadius: BorderRadius.circular(radiusMedium),
           borderSide: const BorderSide(color: primaryGreen, width: 1.4),
         ),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 17),
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 18, vertical: 17),
         hintStyle: GoogleFonts.inter(
           color: textMuted,
           fontSize: 15,
           fontWeight: FontWeight.w600,
         ),
       ),
-      
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
           backgroundColor: primaryGreen,
@@ -141,4 +155,127 @@ class AppTheme {
       ),
     );
   }
+
+  /// Light Theme
+  static ThemeData get lightTheme {
+    final baseTextTheme = GoogleFonts.interTextTheme();
+
+    return ThemeData(
+      useMaterial3: true,
+      brightness: Brightness.light,
+      scaffoldBackgroundColor: lightBackgroundColor,
+      primaryColor: primaryGreen,
+      fontFamily: GoogleFonts.inter().fontFamily,
+      colorScheme: const ColorScheme.light(
+        primary: primaryGreen,
+        secondary: primaryGreenDark,
+        surface: lightSurface,
+        error: danger,
+      ),
+      textTheme: baseTextTheme.copyWith(
+        displayLarge: GoogleFonts.inter(
+          fontSize: 32,
+          fontWeight: FontWeight.w800,
+          color: lightTextPrimary,
+          height: 1.1,
+        ),
+        displayMedium: GoogleFonts.inter(
+          fontSize: 28,
+          fontWeight: FontWeight.w800,
+          color: lightTextPrimary,
+          height: 1.12,
+        ),
+        titleLarge: GoogleFonts.inter(
+          fontSize: 20,
+          fontWeight: FontWeight.w800,
+          color: lightTextPrimary,
+          height: 1.2,
+        ),
+        bodyLarge: GoogleFonts.inter(
+          fontSize: 16,
+          fontWeight: FontWeight.w600,
+          color: lightTextPrimary,
+          height: 1.4,
+        ),
+        bodyMedium: GoogleFonts.inter(
+          fontSize: 14,
+          fontWeight: FontWeight.w600,
+          color: lightTextSecondary,
+          height: 1.35,
+        ),
+      ),
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: lightInputBackground,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(radiusMedium),
+          borderSide: const BorderSide(color: lightCardBorder),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(radiusMedium),
+          borderSide: const BorderSide(color: lightCardBorder),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(radiusMedium),
+          borderSide: const BorderSide(color: primaryGreen, width: 1.4),
+        ),
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 18, vertical: 17),
+        hintStyle: GoogleFonts.inter(
+          color: lightTextMuted,
+          fontSize: 15,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+      elevatedButtonTheme: ElevatedButtonThemeData(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: primaryGreen,
+          foregroundColor: Colors.white,
+          elevation: 4,
+          shadowColor: primaryGreenDark.withAlpha(80),
+          padding: const EdgeInsets.symmetric(vertical: 18),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(radiusMedium),
+          ),
+          textStyle: GoogleFonts.inter(
+            fontSize: 16,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+      ),
+      iconButtonTheme: IconButtonThemeData(
+        style: IconButton.styleFrom(
+          foregroundColor: lightTextPrimary,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(radiusMedium),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Helper extension on BuildContext for dynamic theme-aware colors
+extension ThemeContextExtension on BuildContext {
+  bool get isDarkMode => Theme.of(this).brightness == Brightness.dark;
+  Color get scaffoldBg =>
+      isDarkMode ? const Color(0xFF0C100E) : const Color(0xFFF6F8F7);
+  Color get surfaceBg =>
+      isDarkMode ? const Color(0xFF141B17) : const Color(0xFFFFFFFF);
+  Color get cardBg =>
+      isDarkMode ? const Color(0xFF1E2521) : const Color(0xFFFFFFFF);
+  Color get cardBorder =>
+      isDarkMode ? const Color(0xFF2A342E) : const Color(0xFFE2E8E5);
+  Color get textPrimary =>
+      isDarkMode ? Colors.white : const Color(0xFF111815);
+  Color get textSecondary =>
+      isDarkMode ? const Color(0xFF7A8B83) : const Color(0xFF5A6660);
+  Color get textMuted =>
+      isDarkMode ? const Color(0xFF4A5A52) : const Color(0xFF8C9993);
+  Color get dividerColor =>
+      isDarkMode ? const Color(0xFF26332C) : const Color(0xFFE2E8E5);
+  Color get optionBg =>
+      isDarkMode ? const Color(0xFF18201C) : const Color(0xFFF0F4F2);
+  Color get optionSelectedBg =>
+      isDarkMode ? const Color(0xFF192A20) : const Color(0xFFE6F8EF);
 }

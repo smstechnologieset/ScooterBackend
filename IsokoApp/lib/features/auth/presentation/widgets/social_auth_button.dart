@@ -6,7 +6,7 @@ class SocialAuthButton extends StatelessWidget {
   final IconData icon;
   final String text;
   final VoidCallback onPressed;
-  
+
   const SocialAuthButton({
     super.key,
     required this.icon,
@@ -21,8 +21,8 @@ class SocialAuthButton extends StatelessWidget {
       child: OutlinedButton(
         onPressed: onPressed,
         style: OutlinedButton.styleFrom(
-          backgroundColor: AppTheme.cardBackground,
-          side: BorderSide.none,
+          backgroundColor: context.cardBg,
+          side: BorderSide(color: context.cardBorder),
           padding: const EdgeInsets.symmetric(vertical: 18),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
@@ -33,14 +33,14 @@ class SocialAuthButton extends StatelessWidget {
           children: [
             Icon(
               icon,
-              color: Colors.white,
+              color: context.textPrimary,
               size: 24,
             ),
             const SizedBox(width: 12),
             Text(
               text,
-              style: const TextStyle(
-                color: Colors.white,
+              style: TextStyle(
+                color: context.textPrimary,
                 fontSize: 16,
                 fontWeight: FontWeight.w500,
               ),

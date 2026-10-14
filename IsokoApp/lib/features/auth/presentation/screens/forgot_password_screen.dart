@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../core/theme/app_theme.dart';
 import '../../data/auth_repository.dart';
 import '../../data/providers.dart';
 import '../widgets/auth_button.dart';
@@ -66,87 +67,154 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: context.scaffoldBg,
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(28, 20, 28, 32),
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
           child: ConstrainedBox(
             constraints: BoxConstraints(
-              minHeight: MediaQuery.sizeOf(context).height - 72,
+              minHeight: (MediaQuery.sizeOf(context).height - 64)
+                  .clamp(0, double.infinity),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                IconButton(
-                  tooltip: 'Back to sign in',
-                  onPressed:
-                      _submitting ? null : () => context.go('/sign-in'),
-                  icon: const Icon(Icons.arrow_back),
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: GestureDetector(
+                    onTap: _submitting ? null : () => context.go('/sign-in'),
+                    child: Container(
+                      width: 40,
+                      height: 40,
+                      alignment: Alignment.centerLeft,
+                      child: Icon(
+                        Icons.arrow_back,
+                        color: context.textPrimary,
+                        size: 26,
+                      ),
+                    ),
+                  ),
                 ),
-                const SizedBox(height: 34),
-                const IsokoLogo(height: 58),
-                const SizedBox(height: 52),
+                const SizedBox(height: 24),
+                const IsokoLogo(height: 52),
+                const SizedBox(height: 32),
                 Text(
-                  _sent ? 'Check your email' : 'Reset password',
-                  style: Theme.of(context).textTheme.displayMedium,
+                  'Reset password',
+                  style: TextStyle(
+                    color: context.textPrimary,
+                    fontSize: 28,
+                    fontWeight: FontWeight.w900,
+                  ),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 10),
                 Text(
                   _sent
-                      ? 'If an ISOKO account exists for this address, a password reset link is on its way.'
-                      : 'Enter the email address used for your rider account.',
-                  style: Theme.of(context).textTheme.bodyLarge,
+                      ? 'Check your inbox for a secure recovery link.'
+                      : 'Enter the email address associated with your ISOKO account.',
+                  style: TextStyle(
+                    color: context.textSecondary,
+                    fontSize: 14.5,
+                  ),
                 ),
-                const SizedBox(height: 34),
+                const SizedBox(height: 28),
                 if (_sent) ...[
                   const AuthMessage.info(
-                    'Open the link on this device. For your security, the link expires and can only be used once.',
+                    'If an ISOKO account exists for this email, we sent a password reset link. Open it on this device.',
                   ),
-                  const SizedBox(height: 28),
-                  AuthButton(
-                    text: 'Send another link',
-                    onPressed: () => setState(() {
-                      _sent = false;
-                      _error = null;
-                    }),
+                  const SizedBox(height: 24),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: () => context.go('/sign-in'),
+                      child: const Text('Back to sign in'),
+                    ),
                   ),
                 ] else ...[
                   Form(
                     key: _formKey,
-                    child: TextFormField(
-                      controller: _emailController,
-                      autofocus: widget.initialEmail.isEmpty,
-                      enabled: !_submitting,
-                      keyboardType: TextInputType.emailAddress,
-                      textInputAction: TextInputAction.done,
-                      autofillHints: const [AutofillHints.email],
-                      onFieldSubmitted: (_) => _submit(),
-                      decoration: const InputDecoration(
-                        labelText: 'Email',
-                        hintText: 'you@example.com',
-                        prefixIcon: Icon(Icons.email_outlined),
-                      ),
-                      validator: _validateEmail,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Email address',
+                          style: TextStyle(
+                            color: context.textSecondary,
+                            fontSize: 13.5,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        TextFormField(
+                          controller: _emailController,
+                          keyboardType: TextInputType.emailAddress,
+                          textInputAction: TextInputAction.done,
+                          autofillHints: const [AutofillHints.email],
+                          onFieldSubmitted: (_) => _submit(),
+                          style: TextStyle(
+                            color: context.textPrimary,
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                          ),
+                          decoration: InputDecoration(
+                            hintText: 'you@example.com',
+                            hintStyle: TextStyle(
+                              color: context.textSecondary,
+                              fontSize: 15,
+                            ),
+                            filled: true,
+                            fillColor: context.isDarkMode
+                                ? const Color(0xFF141A17)
+                                : const Color(0xFFEFF3F1),
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 18,
+                              vertical: 16,
+                            ),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: BorderSide(
+                                color: context.cardBorder,
+                              ),
+                            ),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: BorderSide(
+                                color: context.cardBorder,
+                              ),
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: const BorderSide(
+                                color: AppTheme.primaryGreen,
+                                width: 1.5,
+                              ),
+                            ),
+                          ),
+                          validator: (value) {
+                            final email = value?.trim() ?? '';
+                            if (email.isEmpty) {
+                              return 'Enter your email address.';
+                            }
+                            if (!RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$')
+                                .hasMatch(email)) {
+                              return 'Enter a valid email address.';
+                            }
+                            return null;
+                          },
+                        ),
+                        if (_error != null) ...[
+                          const SizedBox(height: 14),
+                          AuthMessage.error(_error!),
+                        ],
+                        const SizedBox(height: 24),
+                        AuthButton(
+                          text: 'Send reset link',
+                          onPressed: _submit,
+                          isLoading: _submitting,
+                        ),
+                      ],
                     ),
                   ),
-                  if (_error != null) ...[
-                    const SizedBox(height: 18),
-                    AuthMessage.error(_error!),
-                  ],
-                  const SizedBox(height: 28),
-                  AuthButton(
-                    text: 'Send reset link',
-                    onPressed: _submit,
-                    isLoading: _submitting,
-                  ),
                 ],
-                const SizedBox(height: 22),
-                Center(
-                  child: TextButton(
-                    onPressed:
-                        _submitting ? null : () => context.go('/sign-in'),
-                    child: const Text('Back to sign in'),
-                  ),
-                ),
               ],
             ),
           ),
@@ -154,13 +222,4 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
       ),
     );
   }
-}
-
-String? _validateEmail(String? value) {
-  final email = value?.trim() ?? '';
-  if (email.isEmpty) return 'Enter your email address.';
-  if (!RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(email)) {
-    return 'Enter a valid email address.';
-  }
-  return null;
 }

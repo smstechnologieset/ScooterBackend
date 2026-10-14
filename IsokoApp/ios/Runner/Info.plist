@@ -37,6 +37,8 @@
 	</array>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>ISOKO uses your camera to scan scooter QR codes and take parking verification photos.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Choose a profile photo for your ISOKO rider account.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>

@@ -1,17 +1,19 @@
 import 'package:go_router/go_router.dart';
 
-import '../../../features/mock/presentation/screens/mock_screens.dart';
+import '../../../features/payments/presentation/screens/payment_screen.dart';
+import '../../../features/payments/presentation/screens/payment_success_screen.dart';
+import '../../../features/payments/presentation/screens/rate_ride_screen.dart';
 
 final paymentRoutes = <RouteBase>[
   GoRoute(
     path: '/payment-due',
     name: 'payment-due',
-    builder: (context, state) => const PaymentDueScreen(),
+    builder: (context, state) => const PaymentScreen(),
   ),
   GoRoute(
     path: '/payment-options',
     name: 'payment-options',
-    builder: (context, state) => const PaymentOptionsScreen(),
+    builder: (context, state) => const PaymentScreen(),
   ),
   GoRoute(
     path: '/payment-success',

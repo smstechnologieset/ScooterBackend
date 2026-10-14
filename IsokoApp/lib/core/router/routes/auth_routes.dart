@@ -8,8 +8,14 @@ import '../../../features/auth/presentation/screens/forgot_password_screen.dart'
 import '../../../features/auth/presentation/screens/reset_password_screen.dart';
 import '../../../features/auth/presentation/screens/sign_in_screen.dart';
 import '../../../features/auth/presentation/screens/sign_up_screen.dart';
+import '../../../features/auth/presentation/screens/splash_screen.dart';
 
 final authRoutes = <RouteBase>[
+  GoRoute(
+    path: '/splash',
+    name: 'splash',
+    builder: (context, state) => const SplashScreen(),
+  ),
   GoRoute(
     path: '/auth-loading',
     name: 'auth-loading',

@@ -1,29 +1,45 @@
 import { PrismaClient, Scooter as PrismaScooter, ScooterConnection } from "@prisma/client";
 import { DeviceRepository } from "./deviceRepository";
 import { Scooter, ScooterConnectionRecord, TelemetryInput } from "../models/domain";
+import { logger } from "../utils/logger";
 
 export class PrismaDeviceRepository implements DeviceRepository {
   public constructor(private readonly prisma: PrismaClient) {}
 
   public async listScooters(limit = 100): Promise<Scooter[]> {
-    const scooters = await this.prisma.scooter.findMany({
-      take: limit,
-      orderBy: {
-        updatedAt: "desc"
-      }
-    });
+    try {
+      const scooters = await this.prisma.scooter.findMany({
+        take: limit,
+        orderBy: {
+          updatedAt: "desc"
+        }
+      });
 
-    return scooters.map(mapScooter);
+      return scooters.map(mapScooter);
+    } catch (error) {
+      logger.error({ error }, "Database connection failed in listScooters; returning empty fleet.");
+      return [];
+    }
   }
 
   public async findScooterById(id: string): Promise<Scooter | null> {
-    const scooter = await this.prisma.scooter.findUnique({ where: { id } });
-    return scooter ? mapScooter(scooter) : null;
+    try {
+      const scooter = await this.prisma.scooter.findUnique({ where: { id } });
+      return scooter ? mapScooter(scooter) : null;
+    } catch (error) {
+      logger.error({ error, id }, "Database error in findScooterById");
+      return null;
+    }
   }
 
   public async findScooterByDeviceId(deviceId: string): Promise<Scooter | null> {
-    const scooter = await this.prisma.scooter.findUnique({ where: { deviceId } });
-    return scooter ? mapScooter(scooter) : null;
+    try {
+      const scooter = await this.prisma.scooter.findUnique({ where: { deviceId } });
+      return scooter ? mapScooter(scooter) : null;
+    } catch (error) {
+      logger.error({ error, deviceId }, "Database error in findScooterByDeviceId");
+      return null;
+    }
   }
 
   public async upsertScooterFromDevice(deviceId: string): Promise<Scooter> {

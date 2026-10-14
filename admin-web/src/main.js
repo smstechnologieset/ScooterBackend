@@ -1,11 +1,23 @@
 const tokenStorageKey = "isoko-admin-token";
-const apiStorageKey = "isoko-admin-api-base-url";
-const defaultApiBaseUrl = window.__ISOKO_ADMIN_CONFIG__?.apiBaseUrl ?? "http://localhost:3000";
+const adminEmailStorageKey = "isoko-admin-email";
 const lowBatteryThresholdPercent = 25;
 
+function resolveApiBaseUrl() {
+  if (typeof window === "undefined") return "http://localhost:3000";
+  if (window.__ISOKO_ADMIN_CONFIG__?.apiBaseUrl) {
+    return window.__ISOKO_ADMIN_CONFIG__.apiBaseUrl;
+  }
+  const hostname = window.location.hostname;
+  if (hostname === "localhost" || hostname === "127.0.0.1" || hostname.endsWith(".local")) {
+    return "http://localhost:3000";
+  }
+  return "https://api.smstechnologieset.com";
+}
+
 const state = {
-  apiBaseUrl: localStorage.getItem(apiStorageKey) ?? defaultApiBaseUrl,
+  apiBaseUrl: resolveApiBaseUrl(),
   token: localStorage.getItem(tokenStorageKey) ?? "",
+  adminEmail: localStorage.getItem(adminEmailStorageKey) ?? "admin@isoko.rw",
   fleet: null,
   query: "",
   filter: "all",
@@ -13,109 +25,15 @@ const state = {
   loading: false,
   actionBusy: null,
   error: null,
-  notice: null
+  notice: null,
+  loginEmail: "",
+  loginPassword: "",
+  loginLoading: false,
+  loginError: null,
+  showPassword: false
 };
 
 const root = document.getElementById("root");
-
-root.innerHTML = `
-  <main class="shell">
-    <header class="topbar">
-      <div class="brand">
-        <div class="brand-mark"><img src="/src/assets/logo.png" alt="ISOKO" /></div>
-        <div>
-          <h1>ISOKO Admin</h1>
-          <p>Fleet operations console</p>
-        </div>
-      </div>
-      <button class="icon-button" id="refresh-button" type="button" title="Refresh fleet">&#8635;</button>
-    </header>
-
-    <section class="connection-panel">
-      <label>
-        API base URL
-        <input id="api-base-url" />
-      </label>
-      <label>
-        Admin token
-        <input id="admin-token" type="password" placeholder="Paste JWT from npm run admin:token" />
-      </label>
-      <button class="primary-button" id="connect-button" type="button">Connect</button>
-    </section>
-
-    <div id="status-area"></div>
-
-    <section class="metrics-grid" id="metrics-grid"></section>
-
-    <section class="controls">
-      <div class="search">
-        <span>&#8981;</span>
-        <input id="query-input" placeholder="Search device ID" />
-      </div>
-      <div class="segments" aria-label="Fleet filter">
-        <button data-filter="all" class="active" type="button">All</button>
-        <button data-filter="online" type="button">Online</button>
-        <button data-filter="alerts" type="button">Alerts</button>
-      </div>
-    </section>
-
-    <section class="workspace">
-      <div class="fleet-table" id="fleet-table"></div>
-      <aside class="side-panel">
-        <section class="panel details" id="details-panel"></section>
-        <section class="panel events">
-          <h2>Recent events</h2>
-          <div id="events-panel"></div>
-        </section>
-      </aside>
-    </section>
-  </main>
-`;
-
-const apiBaseUrlInput = document.getElementById("api-base-url");
-const tokenInput = document.getElementById("admin-token");
-const refreshButton = document.getElementById("refresh-button");
-const connectButton = document.getElementById("connect-button");
-const queryInput = document.getElementById("query-input");
-const statusArea = document.getElementById("status-area");
-const metricsGrid = document.getElementById("metrics-grid");
-const fleetTable = document.getElementById("fleet-table");
-const detailsPanel = document.getElementById("details-panel");
-const eventsPanel = document.getElementById("events-panel");
-
-apiBaseUrlInput.value = state.apiBaseUrl;
-tokenInput.value = state.token;
-queryInput.value = state.query;
-
-apiBaseUrlInput.addEventListener("input", () => {
-  state.apiBaseUrl = apiBaseUrlInput.value.trim();
-  localStorage.setItem(apiStorageKey, state.apiBaseUrl);
-});
-
-tokenInput.addEventListener("input", () => {
-  state.token = tokenInput.value.trim();
-  if (state.token) {
-    localStorage.setItem(tokenStorageKey, state.token);
-  } else {
-    localStorage.removeItem(tokenStorageKey);
-  }
-});
-
-queryInput.addEventListener("input", () => {
-  state.query = queryInput.value;
-  render();
-});
-
-document.querySelectorAll("[data-filter]").forEach((button) => {
-  button.addEventListener("click", () => {
-    state.filter = button.dataset.filter;
-    document.querySelectorAll("[data-filter]").forEach((item) => item.classList.toggle("active", item === button));
-    render();
-  });
-});
-
-refreshButton.addEventListener("click", () => refreshFleet());
-connectButton.addEventListener("click", () => refreshFleet());
 
 render();
 
@@ -123,91 +41,244 @@ if (state.token) {
   void refreshFleet();
 }
 
-async function refreshFleet() {
+function render() {
   if (!state.token) {
-    state.error = "Paste an admin token before loading the fleet.";
-    state.notice = null;
-    render();
-    return;
-  }
-
-  state.loading = true;
-  state.error = null;
-  render();
-
-  try {
-    const response = await requestJson(`/admin/fleet?limit=500`, { method: "GET" });
-    state.fleet = response;
-    state.notice = `Fleet loaded: ${response.scooters.length} scooter${response.scooters.length === 1 ? "" : "s"}.`;
-    if (!state.selectedId) {
-      state.selectedId = response.scooters[0]?.id ?? null;
-    }
-  } catch (error) {
-    state.error = error instanceof Error ? error.message : "Unable to load fleet.";
-  } finally {
-    state.loading = false;
-    render();
+    renderLogin();
+  } else {
+    renderDashboard();
   }
 }
 
-async function runAction(scooter, action) {
-  state.actionBusy = `${scooter.id}:${action}`;
-  state.notice = null;
-  state.error = null;
-  render();
+/* ==========================================================================
+   1. Production Login View
+   ========================================================================== */
 
-  try {
-    await requestJson(actionPath(scooter.id, action), { method: "POST" });
-    state.notice = `${label(action)} command sent for ${displayCode(scooter)}.`;
-    await refreshFleet();
-  } catch (error) {
-    state.error = error instanceof Error ? error.message : "Command failed.";
-  } finally {
-    state.actionBusy = null;
-    render();
-  }
-}
+function renderLogin() {
+  root.innerHTML = `
+    <div class="login-shell">
+      <div class="login-card">
+        <header class="login-header">
+          <div class="login-brand-mark">
+            <img src="/src/assets/logo.png" alt="ISOKO" />
+          </div>
+          <h1>ISOKO Admin</h1>
+          <p>Fleet Operations & Security Console</p>
+        </header>
 
-async function requestJson(path, options) {
-  const headers = {
-    Accept: "application/json",
-    Authorization: `Bearer ${state.token}`
-  };
+        <form class="login-form" id="login-form">
+          ${state.loginError ? `<div class="login-error-alert">&#9888; ${escapeHtml(state.loginError)}</div>` : ""}
 
-  if (options.body !== undefined) {
-    headers["Content-Type"] = "application/json";
-  }
+          <div class="form-group">
+            <label for="login-email">Email or Username</label>
+            <input 
+              id="login-email" 
+              type="text" 
+              autocomplete="username" 
+              placeholder="admin@isoko.rw" 
+              value="${escapeHtml(state.loginEmail)}" 
+              required 
+            />
+          </div>
 
-  const response = await fetch(new URL(path, normalizeBaseUrl(state.apiBaseUrl)), {
-    method: options.method,
-    headers,
-    ...(options.body !== undefined ? { body: JSON.stringify(options.body) } : {})
+          <div class="form-group">
+            <label for="login-password">Password</label>
+            <div class="input-wrapper">
+              <input 
+                id="login-password" 
+                type="${state.showPassword ? "text" : "password"}" 
+                autocomplete="current-password" 
+                placeholder="Enter password" 
+                value="${escapeHtml(state.loginPassword)}" 
+                required 
+              />
+              <button 
+                type="button" 
+                class="toggle-password-btn" 
+                id="toggle-password-btn" 
+                title="${state.showPassword ? "Hide password" : "Show password"}"
+              >
+                ${state.showPassword ? "✕" : "👁"}
+              </button>
+            </div>
+          </div>
+
+          <button type="submit" class="btn-primary-submit" id="login-submit-btn" ${state.loginLoading ? "disabled" : ""}>
+            ${state.loginLoading ? `<span class="btn-spinner"></span> Signing in...` : `Sign In to Console`}
+          </button>
+        </form>
+      </div>
+    </div>
+  `;
+
+  const loginForm = document.getElementById("login-form");
+  const emailInput = document.getElementById("login-email");
+  const passwordInput = document.getElementById("login-password");
+  const togglePasswordBtn = document.getElementById("toggle-password-btn");
+
+  emailInput?.addEventListener("input", (e) => {
+    state.loginEmail = e.target.value;
   });
 
-  const bodyText = await response.text();
-  const body = parseResponseBody(bodyText);
+  passwordInput?.addEventListener("input", (e) => {
+    state.loginPassword = e.target.value;
+  });
 
-  if (!response.ok) {
-    const detail = typeof body === "string" ? body : body?.message;
-    throw new Error(`${response.status} ${response.statusText}${detail ? `: ${detail}` : ""}`);
-  }
+  togglePasswordBtn?.addEventListener("click", () => {
+    state.showPassword = !state.showPassword;
+    render();
+  });
 
-  return body;
+  loginForm?.addEventListener("submit", (e) => {
+    e.preventDefault();
+    void handleLogin(state.loginEmail, state.loginPassword);
+  });
 }
 
-function parseResponseBody(bodyText) {
-  if (!bodyText) {
-    return {};
-  }
+async function handleLogin(email, password) {
+  state.loginLoading = true;
+  state.loginError = null;
+  render();
 
   try {
-    return JSON.parse(bodyText);
-  } catch {
-    return bodyText.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim().slice(0, 180);
+    const loginUrl = new URL("/admin/login", normalizeBaseUrl(state.apiBaseUrl)).href;
+    const response = await fetch(loginUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json"
+      },
+      body: JSON.stringify({ email, password })
+    });
+
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      throw new Error(data?.message || data?.error || `Invalid credentials (HTTP ${response.status})`);
+    }
+
+    if (!data.token) {
+      throw new Error("No authorization token received from server.");
+    }
+
+    state.token = data.token;
+    state.adminEmail = data.admin?.email || email;
+    state.loginLoading = false;
+    state.loginPassword = "";
+
+    localStorage.setItem(tokenStorageKey, state.token);
+    localStorage.setItem(adminEmailStorageKey, state.adminEmail);
+
+    render();
+    await refreshFleet();
+  } catch (error) {
+    state.loginLoading = false;
+    if (error.message.includes("Failed to fetch") || error.message.includes("Connection error")) {
+      state.loginError = `Cannot connect to API server at ${state.apiBaseUrl}. Please verify the server is running.`;
+    } else {
+      state.loginError = error instanceof Error ? error.message : "Unable to authenticate.";
+    }
+    render();
   }
 }
 
-function render() {
+function handleLogout() {
+  state.token = "";
+  state.fleet = null;
+  state.selectedId = null;
+  state.error = null;
+  state.notice = null;
+  state.loginError = null;
+  localStorage.removeItem(tokenStorageKey);
+  localStorage.removeItem(adminEmailStorageKey);
+  render();
+}
+
+/* ==========================================================================
+   2. Production Dashboard View
+   ========================================================================== */
+
+function renderDashboard() {
+  root.innerHTML = `
+    <main class="shell">
+      <header class="topbar">
+        <div class="brand">
+          <div class="brand-mark"><img src="/src/assets/logo.png" alt="ISOKO" /></div>
+          <div>
+            <h1>ISOKO Admin</h1>
+            <p>Fleet operations console</p>
+          </div>
+        </div>
+        <div class="topbar-actions">
+          <div class="admin-session-badge">
+            <span class="active-pulse"></span>
+            <span>${escapeHtml(state.adminEmail)}</span>
+          </div>
+          <button class="icon-button" id="refresh-button" type="button" title="Refresh fleet">&#8635;</button>
+          <button class="sign-out-btn" id="logout-button" type="button" title="Sign out">
+            <span>&#8618;</span> Sign out
+          </button>
+        </div>
+      </header>
+
+      <div id="status-area"></div>
+
+      <section class="metrics-grid" id="metrics-grid"></section>
+
+      <section class="controls">
+        <div class="search">
+          <span>&#8981;</span>
+          <input id="query-input" placeholder="Search device ID or code" value="${escapeHtml(state.query)}" />
+        </div>
+        <div class="segments" aria-label="Fleet filter">
+          <button data-filter="all" class="${state.filter === "all" ? "active" : ""}" type="button">All</button>
+          <button data-filter="online" class="${state.filter === "online" ? "active" : ""}" type="button">Online</button>
+          <button data-filter="alerts" class="${state.filter === "alerts" ? "active" : ""}" type="button">Alerts</button>
+        </div>
+      </section>
+
+      <section class="workspace">
+        <div class="fleet-table" id="fleet-table"></div>
+        <aside class="side-panel">
+          <section class="panel details" id="details-panel"></section>
+          <section class="panel events">
+            <h2>Recent events</h2>
+            <div id="events-panel"></div>
+          </section>
+        </aside>
+      </section>
+    </main>
+  `;
+
+  document.getElementById("refresh-button")?.addEventListener("click", () => void refreshFleet());
+  document.getElementById("logout-button")?.addEventListener("click", handleLogout);
+
+  const queryInput = document.getElementById("query-input");
+  queryInput?.addEventListener("input", () => {
+    state.query = queryInput.value;
+    updateDashboardContent();
+  });
+
+  document.querySelectorAll("[data-filter]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.filter = button.dataset.filter;
+      document.querySelectorAll("[data-filter]").forEach((item) => item.classList.toggle("active", item === button));
+      updateDashboardContent();
+    });
+  });
+
+  updateDashboardContent();
+}
+
+function updateDashboardContent() {
+  const statusArea = document.getElementById("status-area");
+  const metricsGrid = document.getElementById("metrics-grid");
+  const fleetTable = document.getElementById("fleet-table");
+  const detailsPanel = document.getElementById("details-panel");
+  const eventsPanel = document.getElementById("events-panel");
+  const refreshButton = document.getElementById("refresh-button");
+
+  if (!fleetTable) return;
+
   const scooters = filterScooters(state.fleet?.scooters ?? [], state.query, state.filter);
   const selected =
     scooters.find((scooter) => scooter.id === state.selectedId) ??
@@ -227,11 +298,108 @@ function render() {
   detailsPanel.innerHTML = detailsHtml(selected);
   eventsPanel.innerHTML = eventsHtml(events);
 
-  document.getElementById("api-base-url").value = state.apiBaseUrl;
-  document.getElementById("admin-token").value = state.token;
-  document.getElementById("query-input").value = state.query;
-  refreshButton.classList.toggle("spin", state.loading);
-  refreshButton.disabled = state.loading;
+  if (refreshButton) {
+    refreshButton.classList.toggle("spin", state.loading);
+    refreshButton.disabled = state.loading;
+  }
+}
+
+async function refreshFleet() {
+  if (!state.token) {
+    render();
+    return;
+  }
+
+  state.loading = true;
+  state.error = null;
+  updateDashboardContent();
+
+  try {
+    const response = await requestJson(`/admin/fleet?limit=500`, { method: "GET" });
+    state.fleet = response;
+    const count = response.scooters?.length ?? 0;
+    state.notice = count > 0 ? `Fleet updated: ${count} scooter${count === 1 ? "" : "s"} online.` : null;
+    if (!state.selectedId && count > 0) {
+      state.selectedId = response.scooters[0]?.id ?? null;
+    }
+  } catch (error) {
+    state.error = error instanceof Error ? error.message : "Unable to load fleet data.";
+  } finally {
+    state.loading = false;
+    updateDashboardContent();
+  }
+}
+
+async function runAction(scooter, action) {
+  state.actionBusy = `${scooter.id}:${action}`;
+  state.notice = null;
+  state.error = null;
+  updateDashboardContent();
+
+  try {
+    await requestJson(actionPath(scooter.id, action), { method: "POST" });
+    state.notice = `${label(action)} command sent for ${displayCode(scooter)}.`;
+    await refreshFleet();
+  } catch (error) {
+    state.error = error instanceof Error ? error.message : "Command failed.";
+  } finally {
+    state.actionBusy = null;
+    updateDashboardContent();
+  }
+}
+
+async function requestJson(path, options) {
+  const headers = {
+    Accept: "application/json",
+    Authorization: `Bearer ${state.token}`
+  };
+
+  if (options.body !== undefined) {
+    headers["Content-Type"] = "application/json";
+  }
+
+  const url = new URL(path, normalizeBaseUrl(state.apiBaseUrl));
+  let response;
+
+  try {
+    response = await fetch(url, {
+      method: options.method,
+      headers,
+      ...(options.body !== undefined ? { body: JSON.stringify(options.body) } : {})
+    });
+  } catch (err) {
+    throw new Error(`Cannot reach ${state.apiBaseUrl}. Ensure the server is online and reachable.`);
+  }
+
+  if (response.status === 401 || response.status === 403) {
+    state.token = "";
+    localStorage.removeItem(tokenStorageKey);
+    state.loginError = "Session expired or unauthorized. Please sign in again.";
+    render();
+    throw new Error("Session expired.");
+  }
+
+  const bodyText = await response.text();
+  const body = parseResponseBody(bodyText);
+
+  if (!response.ok) {
+    const detail = typeof body === "string" ? body : body?.message || body?.error;
+    throw new Error(`${response.status} ${response.statusText}${detail ? `: ${detail}` : ""}`);
+  }
+
+  return body;
+}
+
+function parseResponseBody(bodyText) {
+  if (!bodyText) {
+    return {};
+  }
+
+  try {
+    return JSON.parse(bodyText);
+  } catch {
+    return bodyText.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim().slice(0, 180);
+  }
 }
 
 function metricCards(metrics) {
@@ -257,8 +425,8 @@ function metricCard(label, value, caption) {
 }
 
 function tableHtml(scooters, selected) {
-  if (scooters.length === 0) {
-    return `<div class="empty">No scooters match this view.</div>`;
+  if (!scooters || scooters.length === 0) {
+    return `<div class="empty">No scooters currently registered in the fleet.</div>`;
   }
 
   return `
@@ -295,7 +463,7 @@ function tableHtml(scooters, selected) {
 
 function detailsHtml(scooter) {
   if (!scooter) {
-    return `<div class="empty">No scooter selected.</div>`;
+    return `<div class="empty">Select a scooter to view hardware and location details.</div>`;
   }
 
   return `
@@ -314,6 +482,10 @@ function detailsHtml(scooter) {
 }
 
 function eventsHtml(events) {
+  if (!events || events.length === 0) {
+    return `<div class="empty">No recent fleet alerts or events recorded.</div>`;
+  }
+
   return events
     .map(
       (event) => `
@@ -398,7 +570,7 @@ document.addEventListener("click", (event) => {
   const select = event.target.closest?.("[data-select]");
   if (select) {
     state.selectedId = select.dataset.select;
-    render();
+    updateDashboardContent();
   }
 });
 
@@ -433,42 +605,47 @@ function buildEvents(scooters) {
       });
     }
   }
-  if (events.length === 0) {
-    events.push({
-      id: "fleet-ready",
-      title: "Fleet ready",
-      detail: "No operational alerts in the current snapshot.",
-      severity: "info",
-      createdAt: new Date().toISOString()
-    });
-  }
   return events
     .sort((a, b) => Date.parse(b.createdAt ?? "") - Date.parse(a.createdAt ?? ""))
     .slice(0, 6);
 }
 
 function filterScooters(scooters, query, filter) {
-  const q = query.trim().toLowerCase();
+  const normalizedQuery = query.trim().toLowerCase();
+
   return scooters.filter((scooter) => {
-    const matchesQuery = !q || scooter.deviceId.toLowerCase().includes(q);
     const matchesFilter =
       filter === "all" ||
       (filter === "online" && scooter.status === "online") ||
-      (filter === "alerts" && scooterNeedsAttention(scooter));
-    return matchesQuery && matchesFilter;
+      (filter === "alerts" &&
+        (scooter.status === "offline" || (scooter.batteryPercent ?? 100) < lowBatteryThresholdPercent));
+
+    if (!matchesFilter) {
+      return false;
+    }
+
+    if (!normalizedQuery) {
+      return true;
+    }
+
+    return (
+      scooter.deviceId.toLowerCase().includes(normalizedQuery) ||
+      displayCode(scooter).toLowerCase().includes(normalizedQuery) ||
+      (scooter.simCcid ?? "").toLowerCase().includes(normalizedQuery)
+    );
   });
 }
 
-function scooterNeedsAttention(scooter) {
-  return (
-    scooter.status === "offline" ||
-    scooter.lockState === "unlocked" ||
-    (scooter.batteryPercent ?? 100) < lowBatteryThresholdPercent
-  );
-}
-
 function emptyMetrics() {
-  return { total: 0, online: 0, offline: 0, locked: 0, unlocked: 0, inRide: 0, lowBattery: 0, alerts: 0 };
+  return {
+    total: 0,
+    online: 0,
+    offline: 0,
+    locked: 0,
+    unlocked: 0,
+    alerts: 0,
+    lowBattery: 0
+  };
 }
 
 function actionPath(scooterId, action) {
@@ -484,12 +661,12 @@ function actionPath(scooterId, action) {
     case "update":
       return `/admin/scooters/${scooterId}/update`;
     default:
-      return `/admin/scooters/${scooterId}`;
+      throw new Error(`Unsupported action: ${action}`);
   }
 }
 
 function displayCode(scooter) {
-  return scooter.publicCode ?? scooter.deviceId;
+  return `ISK-${scooter.deviceId.slice(-3)}`;
 }
 
 function batteryLabel(scooter) {

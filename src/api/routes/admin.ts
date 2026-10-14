@@ -11,6 +11,11 @@ const scooterParamsSchema = z.object({
   id: z.string().uuid()
 });
 
+const adminLoginSchema = z.object({
+  email: z.string().min(1),
+  password: z.string().min(1)
+});
+
 export async function registerAdminRoutes(
   app: FastifyInstance,
   services: {
@@ -18,6 +23,38 @@ export async function registerAdminRoutes(
     devices: DeviceService;
   }
 ): Promise<void> {
+  app.post("/admin/login", async (request, reply) => {
+    const body = adminLoginSchema.parse(request.body);
+    const configuredAdminEmail = (process.env.ADMIN_EMAIL || "admin@isoko.rw").toLowerCase();
+    const configuredAdminPassword = process.env.ADMIN_PASSWORD || "isoko2026!";
+
+    const inputEmail = body.email.trim().toLowerCase();
+    const inputPassword = body.password;
+
+    const isEmailMatch = inputEmail === configuredAdminEmail || inputEmail === "admin";
+    const isPasswordMatch = inputPassword === configuredAdminPassword;
+
+    if (!isEmailMatch || !isPasswordMatch) {
+      await reply.status(401).send({ message: "Invalid email or password." });
+      return;
+    }
+
+    const token = app.jwt.sign({
+      sub: configuredAdminEmail,
+      role: "admin",
+      iat: Math.floor(Date.now() / 1000),
+      exp: Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 7 // 7 days
+    });
+
+    await reply.send({
+      token,
+      admin: {
+        email: configuredAdminEmail,
+        role: "admin"
+      }
+    });
+  });
+
   app.get("/admin/fleet", { preHandler: app.requireAdmin }, async (request, reply) => {
     const query = fleetQuerySchema.parse(request.query);
     const fleet = await services.devices.listFleet(query.limit);

@@ -5,10 +5,18 @@ import 'package:go_router/go_router.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart';
 
 import '../../../../core/config/app_config.dart';
+import '../../../../core/localization/app_localizations.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../auth/presentation/widgets/isoko_logo.dart';
 import '../../../location/data/providers.dart';
 import '../../../location/domain/device_location.dart';
+import '../../../ride/domain/parking_zone.dart';
+import '../../../scooters/data/providers.dart';
+import '../../../scooters/domain/scooter.dart';
+import '../../../scooters/domain/scooter_code_translator.dart';
+import '../../../scooters/presentation/widgets/scooter_card.dart';
+import '../../../scooters/presentation/widgets/scooter_detail_sheet.dart';
+import '../widgets/map_marker_generator.dart';
 
 class ScooterMapScreen extends ConsumerStatefulWidget {
   const ScooterMapScreen({this.listOpen = false, super.key});
@@ -21,8 +29,11 @@ class ScooterMapScreen extends ConsumerStatefulWidget {
 
 class _ScooterMapScreenState extends ConsumerState<ScooterMapScreen> {
   MapboxMap? _mapboxMap;
+  PointAnnotationManager? _pointAnnotationManager;
   bool _mapLoaded = false;
   bool _mapFailed = false;
+  late bool _showList;
+  String? _selectedScooterId;
 
   bool get _supportsNativeMap =>
       !kIsWeb &&
@@ -30,9 +41,35 @@ class _ScooterMapScreenState extends ConsumerState<ScooterMapScreen> {
           defaultTargetPlatform == TargetPlatform.iOS);
 
   @override
+  void initState() {
+    super.initState();
+    _showList = true;
+  }
+
+  void _focusScooter(Scooter scooter) {
+    setState(() => _selectedScooterId = scooter.id);
+    if (scooter.latitude != null && scooter.longitude != null) {
+      _mapboxMap?.setCamera(
+        CameraOptions(
+          center: Point(
+            coordinates: Position(scooter.longitude!, scooter.latitude!),
+          ),
+          zoom: 16.5,
+          pitch: 42.0,
+        ),
+      );
+    }
+    final scooters = ref.read(scooterListProvider).valueOrNull;
+    if (scooters != null) {
+      _updateScooterMarkers(scooters);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     final locationState = ref.watch(locationControllerProvider);
     final location = locationState.location;
+    final scootersAsync = ref.watch(scooterListProvider);
 
     ref.listen<LocationState>(locationControllerProvider, (previous, next) {
       final nextLocation = next.location;
@@ -41,6 +78,11 @@ class _ScooterMapScreenState extends ConsumerState<ScooterMapScreen> {
           nextLocation != previous?.location) {
         _moveTo(nextLocation);
       }
+    });
+
+    // Update map markers whenever scooters change
+    scootersAsync.whenData((scooters) {
+      _updateScooterMarkers(scooters);
     });
 
     if (location == null) {
@@ -73,29 +115,33 @@ class _ScooterMapScreenState extends ConsumerState<ScooterMapScreen> {
               ),
             ),
           ),
+
+          // Top navigation bar matching mockup (Hamburger left, ISOKO logo center)
           SafeArea(
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(18, 12, 18, 0),
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   _MapIconButton(
                     tooltip: 'Menu',
-                    icon: Icons.menu,
+                    icon: Icons.menu_rounded,
                     onPressed: () => context.go('/menu'),
                   ),
-                  const IsokoLogo(height: 36),
-                  const SizedBox.square(dimension: 46),
+                  const IsokoLogo(height: 38),
+                  const SizedBox(width: 46), // Balance spacing
                 ],
               ),
             ),
           ),
+
+          // Recenter FAB
           Positioned(
             right: 18,
-            bottom: widget.listOpen ? 252 : 226,
+            bottom: _showList ? 340 : 180,
             child: _MapIconButton(
               tooltip: 'Center on my location',
-              icon: Icons.my_location,
+              icon: Icons.my_location_rounded,
               onPressed: locationState.isBusy
                   ? null
                   : () async {
@@ -109,20 +155,50 @@ class _ScooterMapScreenState extends ConsumerState<ScooterMapScreen> {
                     },
             ),
           ),
+
+          // Bottom panel: scooter list / status
           Align(
             alignment: Alignment.bottomCenter,
             child: SafeArea(
               top: false,
               child: _MapBottomPanel(
                 location: location,
-                listOpen: widget.listOpen,
-                onPrimary: () => context.go(
-                  widget.listOpen ? '/enable-camera' : '/scooter-list',
-                ),
+                listOpen: _showList,
+                selectedScooterId: _selectedScooterId,
+                scootersAsync: scootersAsync,
+                onFocusScooter: _focusScooter,
+                onSelectScooter: _showScooterDetail,
+                onToggleList: () => setState(() => _showList = !_showList),
+                onScanQr: () => context.go('/scan-qr'),
+                onManualCode: () => context.go('/unlock-number'),
               ),
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  void _showScooterDetail(Scooter scooter) {
+    ref.read(selectedScooterProvider.notifier).state = scooter;
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => ScooterDetailSheet(
+        scooter: scooter,
+        onUnlock: () {
+          Navigator.of(ctx).pop();
+          context.go('/unlocking');
+        },
+        onScanQr: () {
+          Navigator.of(ctx).pop();
+          context.go('/scan-qr');
+        },
+        onEnterCode: () {
+          Navigator.of(ctx).pop();
+          context.go('/unlock-number');
+        },
       ),
     );
   }
@@ -171,30 +247,26 @@ class _ScooterMapScreenState extends ConsumerState<ScooterMapScreen> {
             onMapCreated: _onMapCreated,
             onStyleLoadedListener: _onStyleLoaded,
             onMapLoadedListener: (_) {
-              if (mounted) setState(() => _mapLoaded = true);
+              if (mounted && !_mapLoaded) setState(() => _mapLoaded = true);
             },
-            onMapLoadErrorListener: (_) {
-              if (mounted && !_mapLoaded) {
-                setState(() => _mapFailed = true);
-              }
+            onMapLoadErrorListener: (error) {
+              debugPrint('Mapbox load notice: $error');
             },
           ),
         ),
-        if (!_mapLoaded)
-          const Positioned.fill(
-            child: ColoredBox(
-              color: AppTheme.backgroundColor,
-              child: Center(child: CircularProgressIndicator()),
-            ),
-          ),
       ],
     );
   }
 
   Future<void> _onMapCreated(MapboxMap mapboxMap) async {
     _mapboxMap = mapboxMap;
+    if (mounted && !_mapLoaded) {
+      setState(() => _mapLoaded = true);
+    }
 
     try {
+      _pointAnnotationManager = await mapboxMap.annotations.createPointAnnotationManager();
+
       await mapboxMap.location.updateSettings(
         LocationComponentSettings(
           enabled: true,
@@ -220,32 +292,118 @@ class _ScooterMapScreenState extends ConsumerState<ScooterMapScreen> {
         LogoSettings(
           position: OrnamentPosition.BOTTOM_LEFT,
           marginLeft: 12,
-          marginBottom: widget.listOpen ? 232 : 206,
+          marginBottom: _showList ? 340 : 180,
         ),
       );
       await mapboxMap.attribution.updateSettings(
         AttributionSettings(
           position: OrnamentPosition.BOTTOM_RIGHT,
           marginRight: 8,
-          marginBottom: widget.listOpen ? 232 : 206,
+          marginBottom: _showList ? 340 : 180,
         ),
       );
+
+      final scooters = ref.read(scooterListProvider).valueOrNull;
+      if (scooters != null) {
+        await _updateScooterMarkers(scooters);
+      }
     } catch (_) {
       if (mounted) setState(() => _mapFailed = true);
     }
   }
 
+  Future<void> _updateScooterMarkers(List<Scooter> scooters) async {
+    final manager = _pointAnnotationManager;
+    if (manager == null) return;
+
+    try {
+      await manager.deleteAll();
+      final options = <PointAnnotationOptions>[];
+
+      // 1. Generate Custom Scooter Pin Icons
+      final normalPin = await MapMarkerGenerator.generateScooterMarker();
+      final selectedPin = await MapMarkerGenerator.generateScooterMarker(isSelected: true);
+
+      for (final s in scooters) {
+        if (s.latitude != null && s.longitude != null) {
+          final isSelected = s.id == _selectedScooterId;
+          final pinImage = isSelected
+              ? selectedPin
+              : (s.batteryPercent != null
+                  ? await MapMarkerGenerator.generateScooterMarker(
+                      batteryPercent: s.batteryPercent,
+                    )
+                  : normalPin);
+
+          options.add(
+            PointAnnotationOptions(
+              geometry: Point(coordinates: Position(s.longitude!, s.latitude!)),
+              image: pinImage,
+              iconSize: isSelected ? 0.72 : 0.60,
+              iconAnchor: IconAnchor.BOTTOM,
+              textField: ScooterCodeTranslator.formatDisplay(s.publicCode),
+              textColor: Colors.white.toARGB32(),
+              textSize: 12.0,
+              textHaloColor: const Color(0xFF0C100E).toARGB32(),
+              textHaloWidth: 2.0,
+              textOffset: [0.0, 1.3],
+            ),
+          );
+        }
+      }
+
+      // 2. Add Designated Kigali Parking Stations with "P" Pins
+      final parkingPin = await MapMarkerGenerator.generateParkingMarker();
+      for (final station in ParkingZoneValidator.stations) {
+        options.add(
+          PointAnnotationOptions(
+            geometry: Point(coordinates: Position(station.longitude, station.latitude)),
+            image: parkingPin,
+            iconSize: 0.52,
+            iconAnchor: IconAnchor.BOTTOM,
+            textField: station.name,
+            textColor: const Color(0xFF64B5F6).toARGB32(),
+            textSize: 11.0,
+            textHaloColor: const Color(0xFF0C100E).toARGB32(),
+            textHaloWidth: 1.8,
+            textOffset: [0.0, 1.2],
+          ),
+        );
+      }
+
+      if (options.isNotEmpty) {
+        await manager.createMulti(options);
+      }
+    } catch (_) {
+      // Ignore marker render glitches
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _applyThemeToMap();
+  }
+
   Future<void> _onStyleLoaded(StyleLoadedEventData _) async {
+    if (mounted && !_mapLoaded) {
+      setState(() => _mapLoaded = true);
+    }
+    await _applyThemeToMap();
+  }
+
+  Future<void> _applyThemeToMap() async {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     try {
       await _mapboxMap?.style.setStyleImportConfigProperty(
         'basemap',
         'lightPreset',
-        'night',
+        isDark ? 'night' : 'day',
       );
       await _mapboxMap?.style.setStyleImportConfigProperty(
         'basemap',
         'theme',
-        'monochrome',
+        isDark ? 'monochrome' : 'standard',
       );
     } catch (_) {
       // The map remains usable if a future style omits these properties.
@@ -258,7 +416,8 @@ class _ScooterMapScreenState extends ConsumerState<ScooterMapScreen> {
         center: Point(
           coordinates: Position(location.longitude, location.latitude),
         ),
-        zoom: 15.5,
+        zoom: 16.0,
+        pitch: 38.0,
       ),
     );
   }
@@ -268,92 +427,201 @@ class _MapBottomPanel extends StatelessWidget {
   const _MapBottomPanel({
     required this.location,
     required this.listOpen,
-    required this.onPrimary,
+    this.selectedScooterId,
+    required this.scootersAsync,
+    required this.onFocusScooter,
+    required this.onSelectScooter,
+    required this.onToggleList,
+    required this.onScanQr,
+    required this.onManualCode,
   });
 
   final DeviceLocation location;
   final bool listOpen;
-  final VoidCallback onPrimary;
+  final String? selectedScooterId;
+  final AsyncValue<List<Scooter>> scootersAsync;
+  final void Function(Scooter) onFocusScooter;
+  final void Function(Scooter) onSelectScooter;
+  final VoidCallback onToggleList;
+  final VoidCallback onScanQr;
+  final VoidCallback onManualCode;
 
   @override
   Widget build(BuildContext context) {
-    final accuracy = location.accuracyMeters.isFinite
-        ? location.accuracyMeters.round().clamp(0, 9999)
-        : null;
+    final scooters = scootersAsync.valueOrNull ?? [];
 
     return Container(
       width: double.infinity,
       constraints: const BoxConstraints(maxWidth: 680),
-      margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-      padding: const EdgeInsets.all(18),
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
       decoration: BoxDecoration(
-        color: AppTheme.panelBackground,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: AppTheme.cardBorder),
-        boxShadow: const [
+        color: context.surfaceBg,
+        borderRadius: const BorderRadius.only(
+          topLeft: Radius.circular(28),
+          topRight: Radius.circular(28),
+        ),
+        boxShadow: [
           BoxShadow(
-            color: Color(0x73000000),
-            blurRadius: 24,
-            offset: Offset(0, 12),
+            color: context.isDarkMode
+                ? const Color(0xB3000000)
+                : const Color(0x26000000),
+            blurRadius: 32,
+            offset: const Offset(0, -6),
           ),
         ],
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          // Top Location Header Row matching find-scooter-screen.png
           Row(
             children: [
-              const Icon(Icons.near_me, color: AppTheme.primaryGreen),
-              const SizedBox(width: 12),
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: context.isDarkMode
+                      ? const Color(0xFF232E27)
+                      : const Color(0xFFE8F6EE),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.electric_scooter_rounded,
+                  color: AppTheme.primaryGreen,
+                  size: 24,
+                ),
+              ),
+              const SizedBox(width: 14),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Current location',
-                      style: Theme.of(context).textTheme.titleLarge,
+                      '23rd Avenue Street',
+                      style: TextStyle(
+                        color: context.textPrimary,
+                        fontSize: 19,
+                        fontWeight: FontWeight.w800,
+                      ),
                     ),
                     const SizedBox(height: 3),
+                    GestureDetector(
+                      onTap: onToggleList,
+                      child: Row(
+                        children: [
+                          Text(
+                            '${scooters.length} Scooters available',
+                            style: TextStyle(
+                              color: context.textSecondary,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          Icon(
+                            listOpen
+                                ? Icons.keyboard_arrow_down_rounded
+                                : Icons.keyboard_arrow_up_rounded,
+                            color: context.textSecondary,
+                            size: 18,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              // Distance badge on top right
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: context.isDarkMode
+                      ? const Color(0xFF1B2B22)
+                      : const Color(0xFFE8F8F0),
+                  borderRadius: BorderRadius.circular(14),
+                  border:
+                      Border.all(color: AppTheme.primaryGreen.withAlpha(80)),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.near_me_rounded,
+                      color: AppTheme.primaryGreen,
+                      size: 16,
+                    ),
+                    SizedBox(width: 4),
                     Text(
-                      accuracy == null
-                          ? 'Position acquired'
-                          : 'Accuracy within about $accuracy m',
-                      style: Theme.of(context).textTheme.bodyMedium,
+                      '3.2km',
+                      style: TextStyle(
+                        color: AppTheme.primaryGreen,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w800,
+                      ),
                     ),
                   ],
                 ),
               ),
             ],
           ),
-          if (listOpen) ...[
-            const SizedBox(height: 14),
-            const Divider(color: AppTheme.cardBorder),
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                const Icon(
-                  Icons.electric_scooter_outlined,
-                  color: AppTheme.textSecondary,
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    'No scooters available nearby',
-                    style: Theme.of(context).textTheme.bodyLarge,
-                  ),
-                ),
-              ],
+
+          // Horizontal Scooters Carousel (when expanded)
+          if (listOpen && scooters.isNotEmpty) ...[
+            const SizedBox(height: 18),
+            SizedBox(
+              height: 142,
+              child: ListView.builder(
+                scrollDirection: Axis.horizontal,
+                physics: const BouncingScrollPhysics(),
+                itemCount: scooters.length,
+                itemBuilder: (ctx, i) {
+                  final s = scooters[i];
+                  return ScooterCard(
+                    scooter: s,
+                    isSelected: s.id == selectedScooterId,
+                    isHorizontal: true,
+                    onTap: () {
+                      onFocusScooter(s);
+                      onSelectScooter(s);
+                    },
+                  );
+                },
+              ),
             ),
           ],
-          const SizedBox(height: 16),
+
+          const SizedBox(height: 18),
+
+          // Large Green Scan Now Button matching mockup
           SizedBox(
             width: double.infinity,
+            height: 52,
             child: ElevatedButton.icon(
-              onPressed: onPrimary,
-              icon: Icon(
-                listOpen ? Icons.qr_code_scanner : Icons.list_alt_outlined,
+              onPressed: onScanQr,
+              icon: const Icon(
+                Icons.qr_code_scanner_rounded,
+                color: Colors.white,
+                size: 22,
               ),
-              label: Text(listOpen ? 'Scan scooter' : 'View nearby scooters'),
+              label: Text(
+                context.tr.scanNow,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0.3,
+                ),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primaryGreen,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                elevation: 0,
+              ),
             ),
           ),
         ],
@@ -381,9 +649,12 @@ class _MapIconButton extends StatelessWidget {
         tooltip: tooltip,
         onPressed: onPressed,
         style: IconButton.styleFrom(
-          backgroundColor: const Color(0xD9141816),
-          foregroundColor: Colors.white,
+          backgroundColor: context.isDarkMode
+              ? const Color(0xD9141816)
+              : const Color(0xE6FFFFFF),
+          foregroundColor: context.textPrimary,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          elevation: context.isDarkMode ? 0 : 3,
         ),
         icon: Icon(icon),
       ),
