@@ -3,13 +3,8 @@ const adminEmailStorageKey = "isoko-admin-email";
 const lowBatteryThresholdPercent = 25;
 
 function resolveApiBaseUrl() {
-  if (typeof window === "undefined") return "http://localhost:3000";
-  if (window.__ISOKO_ADMIN_CONFIG__?.apiBaseUrl) {
+  if (typeof window !== "undefined" && window.__ISOKO_ADMIN_CONFIG__?.apiBaseUrl) {
     return window.__ISOKO_ADMIN_CONFIG__.apiBaseUrl;
-  }
-  const hostname = window.location.hostname;
-  if (hostname === "localhost" || hostname === "127.0.0.1" || hostname.endsWith(".local")) {
-    return "http://localhost:3000";
   }
   return "https://api.smstechnologieset.com";
 }

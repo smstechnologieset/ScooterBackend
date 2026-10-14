@@ -7,11 +7,11 @@ const dist = join(root, "dist");
 
 await rm(dist, { recursive: true, force: true });
 await mkdir(dist, { recursive: true });
-const apiBaseUrl = process.env.ADMIN_API_BASE_URL ?? process.env.VITE_API_BASE_URL ?? "http://localhost:3000";
+const apiBaseUrl = process.env.ADMIN_API_BASE_URL ?? process.env.VITE_API_BASE_URL ?? "https://api.smstechnologieset.com";
 const indexHtml = await readFile(join(root, "index.html"), "utf8");
 await writeFile(
   join(dist, "index.html"),
-  indexHtml.replace("http://localhost:3000", apiBaseUrl),
+  indexHtml.replace("https://api.smstechnologieset.com", apiBaseUrl),
   "utf8"
 );
 await cp(join(root, "src"), join(dist, "src"), { recursive: true });
