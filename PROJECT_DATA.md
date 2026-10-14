@@ -7360,5 +7360,7 @@ Future priorities (When Hardware & SIM Cards Arrive):
   3. Launched local backend dev server listening on `http://127.0.0.1:3000` (Fastify REST API) and `0.0.0.0:7000` (TCP smart-lock socket server).
   4. Verified that both `POST /admin/login` (admin authentication) and `GET /admin/fleet?limit=500` return HTTP 200 cleanly with valid JWT tokens and empty fleet metrics.
   5. Validated that `admin-web` builds with 0 errors (`npm run build`), all Vitest tests pass (`30/30`), and TypeScript linting passes with zero errors.
+  6. Successfully deployed to production VPS (`api.smstechnologieset.com`): code pulled via `git pull --ff-only origin main`, recompiled with `npm run build`, and PM2 process `scooter-lock-backend` restarted. Verified public health check (`{"ok":true}`), admin login endpoint, and live fleet data with 9 real registered scooters.
+  7. Verified live Vercel admin dashboard deployment at `https://scooter-backend-nu.vercel.app/` connected to live VPS backend.
 
 For every future significant action, update current architecture/status/configuration/dependencies/file history/objectives, preserve historical decisions/problems/session entries, append a Session History entry, and refresh this final Resume Context before ending the session.
