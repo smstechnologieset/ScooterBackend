@@ -72,8 +72,8 @@ class MapMarkerGenerator {
       ..strokeWidth = isSelected ? 3.5 : 2.5;
     canvas.drawPath(pinPath, borderPaint);
 
-    // 6. Center Scooter Glyph (Stylized vector scooter)
-    _drawScooterGlyph(canvas, centerX, centerY - 2);
+    // 6. Center Bike Glyph (Stylized vector bicycle)
+    _drawBikeGlyph(canvas, centerX, centerY - 4);
 
     // 7. Battery Badge Pill (if provided)
     if (batteryPercent != null) {
@@ -160,47 +160,62 @@ class MapMarkerGenerator {
     return bytes;
   }
 
-  static void _drawScooterGlyph(Canvas canvas, double cx, double cy) {
+  static void _drawBikeGlyph(Canvas canvas, double cx, double cy) {
     final strokePaint = Paint()
       ..color = Colors.white
       ..style = PaintingStyle.stroke
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round
-      ..strokeWidth = 3.6;
+      ..strokeWidth = 2.8;
 
     final fillPaint = Paint()
       ..color = Colors.white
       ..style = PaintingStyle.fill;
 
-    // Wheels
-    final frontWheel = Offset(cx - 16, cy + 12);
-    final rearWheel = Offset(cx + 17, cy + 12);
-    canvas.drawCircle(frontWheel, 5.5, strokePaint);
-    canvas.drawCircle(rearWheel, 5.5, strokePaint);
-
-    // Wheel hubs
-    canvas.drawCircle(frontWheel, 2.0, fillPaint);
+    // 1. Two Wheels (Radius 8)
+    final rearWheel = Offset(cx - 17, cy + 8);
+    final frontWheel = Offset(cx + 17, cy + 8);
+    canvas.drawCircle(rearWheel, 8.0, strokePaint);
+    canvas.drawCircle(frontWheel, 8.0, strokePaint);
     canvas.drawCircle(rearWheel, 2.0, fillPaint);
+    canvas.drawCircle(frontWheel, 2.0, fillPaint);
 
-    // Deck & Frame Path
+    // 2. Bike Frame
+    final bb = Offset(cx, cy + 8); // Bottom bracket
+    final seat = Offset(cx - 7, cy - 4); // Seat joint
+    final head = Offset(cx + 9, cy - 7); // Head tube
+    final handle = Offset(cx + 7, cy - 13); // Handlebars
+    final saddle = Offset(cx - 8, cy - 8); // Saddle
+
     final framePath = Path()
-      ..moveTo(cx - 16, cy + 12)
-      ..lineTo(cx - 10, cy + 12)
-      ..lineTo(cx + 12, cy + 12)
-      ..lineTo(cx + 17, cy + 12);
+      // Rear triangle
+      ..moveTo(rearWheel.dx, rearWheel.dy)
+      ..lineTo(seat.dx, seat.dy)
+      ..lineTo(bb.dx, bb.dy)
+      ..lineTo(rearWheel.dx, rearWheel.dy)
+      // Front triangle
+      ..moveTo(seat.dx, seat.dy)
+      ..lineTo(head.dx, head.dy)
+      ..lineTo(bb.dx, bb.dy)
+      // Front fork to front wheel
+      ..moveTo(head.dx, head.dy)
+      ..lineTo(frontWheel.dx, frontWheel.dy);
     canvas.drawPath(framePath, strokePaint);
 
-    // Stem (Angled handlebar pole)
-    final stemPath = Path()
-      ..moveTo(cx - 10, cy + 12)
-      ..lineTo(cx - 4, cy - 14);
-    canvas.drawPath(stemPath, strokePaint);
+    // 3. Saddle
+    final saddlePath = Path()
+      ..moveTo(seat.dx, seat.dy)
+      ..lineTo(saddle.dx, saddle.dy)
+      ..moveTo(saddle.dx - 4, saddle.dy)
+      ..lineTo(saddle.dx + 4, saddle.dy);
+    canvas.drawPath(saddlePath, strokePaint..strokeWidth = 3.2);
 
-    // Handlebars
-    final handlebarPath = Path()
-      ..moveTo(cx - 11, cy - 13)
-      ..lineTo(cx + 3, cy - 15);
-    canvas.drawPath(handlebarPath, strokePaint);
+    // 4. Handlebars
+    final barPath = Path()
+      ..moveTo(head.dx, head.dy)
+      ..lineTo(handle.dx, handle.dy)
+      ..lineTo(handle.dx + 5, handle.dy - 1);
+    canvas.drawPath(barPath, strokePaint..strokeWidth = 2.8);
   }
 
   static void _drawBatteryPill(

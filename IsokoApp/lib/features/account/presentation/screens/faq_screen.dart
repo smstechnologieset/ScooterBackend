@@ -16,7 +16,7 @@ class _FaqScreenState extends State<FaqScreen> {
   final _faqs = const [
     _FaqItem(
       'How do I start a ride?',
-      'Find an available scooter on the map, tap "Scan Now", and scan the QR code on the scooter handlebar. You can also enter the 3-digit or full code manually.',
+      'Find an available bike on the map, tap "Scan Now", and scan the QR code on the bike handlebar. You can also enter the 3-digit or full code manually.',
     ),
     _FaqItem(
       'How much does it cost?',
@@ -27,8 +27,8 @@ class _FaqScreenState extends State<FaqScreen> {
       'Always park in designated ISOKO Electra parking bays visible on the map. Avoid private property, pedestrian walkways, and building entrances.',
     ),
     _FaqItem(
-      'What if my scooter is damaged?',
-      'Tap "Help & Support" or contact our 24/7 support team immediately. Do not attempt to ride a damaged scooter.',
+      'What if my bike is damaged?',
+      'Tap "Help & Support" or contact our 24/7 support team immediately. Do not attempt to ride a damaged bike.',
     ),
   ];
 
@@ -77,7 +77,7 @@ class _FaqScreenState extends State<FaqScreen> {
             ),
             const SizedBox(height: 8),
             Text(
-              'Quick answers to commonly asked questions about ISOKO rides and scooters.',
+              'Quick answers to commonly asked questions about ISOKO rides and bikes.',
               style: TextStyle(
                 color: context.textSecondary,
                 fontSize: 13.5,

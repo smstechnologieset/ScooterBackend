@@ -6,6 +6,7 @@ import '../../../../core/theme/app_theme.dart';
 import '../../../auth/presentation/widgets/isoko_logo.dart';
 import '../../../scooters/domain/scooter_code_translator.dart';
 import '../../data/ride_controller.dart';
+import '../../domain/ride_session.dart';
 
 class RideActiveScreen extends ConsumerWidget {
   const RideActiveScreen({super.key});
@@ -15,10 +16,10 @@ class RideActiveScreen extends ConsumerWidget {
     final ride = ref.watch(rideControllerProvider);
     final rideNotifier = ref.read(rideControllerProvider.notifier);
 
-    final duration = ride?.formattedDuration ?? '02:00 min';
+    final duration = ride?.formattedDuration ?? '00:00';
     final distance = ride != null
-        ? '${ride.distanceKm.toStringAsFixed(1)} km'
-        : '3.2 km';
+        ? '${ride.distanceKm.toStringAsFixed(2)} km'
+        : '0.00 km';
     final rawCode = ride?.scooterCode ?? 'ISK-001';
     final displayCode = ScooterCodeTranslator.formatDisplay(rawCode);
     final isPaused = ride?.isPaused ?? false;
@@ -27,10 +28,13 @@ class RideActiveScreen extends ConsumerWidget {
       backgroundColor: context.scaffoldBg,
       body: Stack(
         children: [
-          // Map simulation background matching pause-ride-screen.png
+          // Live GPS Breadcrumb Polyline Map Tracker
           Positioned.fill(
             child: CustomPaint(
-              painter: _ActiveRideMapPainter(isDark: context.isDarkMode),
+              painter: _ActiveRideMapPainter(
+                isDark: context.isDarkMode,
+                breadcrumbs: ride?.breadcrumbs ?? const [],
+              ),
             ),
           ),
 
@@ -129,7 +133,7 @@ class RideActiveScreen extends ConsumerWidget {
                           Text(
                             isPaused
                                 ? 'Paused • Motor Lock Engaged'
-                                : 'Active Ride • Live 18 km/h',
+                                : 'Active Ride • Live ${(ride?.currentSpeedKmh ?? 0.0) > 0 ? '${ride?.currentSpeedKmh} km/h' : 'GPS Tracking'}',
                             style: TextStyle(
                               color: isPaused
                                   ? Colors.amber
@@ -368,9 +372,13 @@ class _MetricItem extends StatelessWidget {
 }
 
 class _ActiveRideMapPainter extends CustomPainter {
-  const _ActiveRideMapPainter({required this.isDark});
+  const _ActiveRideMapPainter({
+    required this.isDark,
+    required this.breadcrumbs,
+  });
 
   final bool isDark;
+  final List<RouteBreadcrumb> breadcrumbs;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -378,12 +386,6 @@ class _ActiveRideMapPainter extends CustomPainter {
       ..color = isDark ? const Color(0xFF1B231F) : const Color(0xFFE2EBE6)
       ..strokeWidth = 3
       ..style = PaintingStyle.stroke;
-
-    final routePaint = Paint()
-      ..color = isDark ? Colors.white : const Color(0xFF1E2521)
-      ..strokeWidth = 3
-      ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.round;
 
     final road = Path()
       ..moveTo(size.width * 0.1, 0)
@@ -394,23 +396,99 @@ class _ActiveRideMapPainter extends CustomPainter {
       ..lineTo(size.width, size.height * 0.5);
     canvas.drawPath(road, roadPaint);
 
-    // Active Route Path
-    final route = Path()
-      ..moveTo(size.width * 0.5, size.height * 0.52)
-      ..lineTo(size.width * 0.62, size.height * 0.44)
-      ..lineTo(size.width * 0.72, size.height * 0.48);
-    canvas.drawPath(route, routePaint);
+    if (breadcrumbs.isEmpty) {
+      final puckCenter = Offset(size.width * 0.5, size.height * 0.45);
+      canvas.drawCircle(
+          puckCenter, 28, Paint()..color = AppTheme.primaryGreen.withAlpha(40));
+      canvas.drawCircle(puckCenter, 14,
+          Paint()..color = isDark ? Colors.white : Colors.black87);
+      canvas.drawCircle(puckCenter, 9, Paint()..color = AppTheme.primaryGreen);
+      return;
+    }
 
-    // Green Location Puck
-    final puckCenter = Offset(size.width * 0.5, size.height * 0.52);
+    if (breadcrumbs.length == 1) {
+      final puckCenter = Offset(size.width * 0.5, size.height * 0.45);
+      canvas.drawCircle(
+          puckCenter, 32, Paint()..color = AppTheme.primaryGreen.withAlpha(45));
+      canvas.drawCircle(puckCenter, 14,
+          Paint()..color = isDark ? Colors.white : Colors.black87);
+      canvas.drawCircle(puckCenter, 9, Paint()..color = AppTheme.primaryGreen);
+      return;
+    }
+
+    // Dynamic bounding box of all GPS points
+    double minLat = breadcrumbs.first.latitude;
+    double maxLat = breadcrumbs.first.latitude;
+    double minLng = breadcrumbs.first.longitude;
+    double maxLng = breadcrumbs.first.longitude;
+
+    for (final pt in breadcrumbs) {
+      if (pt.latitude < minLat) minLat = pt.latitude;
+      if (pt.latitude > maxLat) maxLat = pt.latitude;
+      if (pt.longitude < minLng) minLng = pt.longitude;
+      if (pt.longitude > maxLng) maxLng = pt.longitude;
+    }
+
+    final latSpan = (maxLat - minLat).clamp(0.0004, 1.0);
+    final lngSpan = (maxLng - minLng).clamp(0.0004, 1.0);
+
+    const padX = 42.0;
+    const padTop = 90.0;
+    final padBottom = size.height * 0.45;
+    final usableW = size.width - (padX * 2);
+    final usableH = size.height - padTop - padBottom;
+
+    Offset toCanvasPoint(double lat, double lng) {
+      final xNorm = (lng - minLng) / lngSpan;
+      final yNorm = 1.0 - ((lat - minLat) / latSpan);
+      return Offset(padX + (xNorm * usableW), padTop + (yNorm * usableH));
+    }
+
+    // Live GPS Polyline Track
+    final polylinePath = Path();
+    for (int i = 0; i < breadcrumbs.length; i++) {
+      final pt = toCanvasPoint(breadcrumbs[i].latitude, breadcrumbs[i].longitude);
+      if (i == 0) {
+        polylinePath.moveTo(pt.dx, pt.dy);
+      } else {
+        polylinePath.lineTo(pt.dx, pt.dy);
+      }
+    }
+
+    // Polyline glow
+    final glowPaint = Paint()
+      ..color = AppTheme.primaryGreen.withAlpha(85)
+      ..strokeWidth = 10.0
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+    canvas.drawPath(polylinePath, glowPaint);
+
+    // Polyline core
+    final linePaint = Paint()
+      ..color = AppTheme.primaryGreen
+      ..strokeWidth = 4.0
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+    canvas.drawPath(polylinePath, linePaint);
+
+    // Start coordinate pin
+    final startPt = toCanvasPoint(breadcrumbs.first.latitude, breadcrumbs.first.longitude);
+    canvas.drawCircle(startPt, 6, Paint()..color = Colors.white);
+    canvas.drawCircle(startPt, 3.5, Paint()..color = Colors.black87);
+
+    // Latest location puck
+    final latestPt = toCanvasPoint(breadcrumbs.last.latitude, breadcrumbs.last.longitude);
     canvas.drawCircle(
-        puckCenter, 28, Paint()..color = AppTheme.primaryGreen.withAlpha(40));
-    canvas.drawCircle(puckCenter, 14,
+        latestPt, 28, Paint()..color = AppTheme.primaryGreen.withAlpha(50));
+    canvas.drawCircle(latestPt, 14,
         Paint()..color = isDark ? Colors.white : Colors.black87);
-    canvas.drawCircle(puckCenter, 9, Paint()..color = AppTheme.primaryGreen);
+    canvas.drawCircle(latestPt, 9, Paint()..color = AppTheme.primaryGreen);
   }
 
   @override
   bool shouldRepaint(covariant _ActiveRideMapPainter oldDelegate) =>
-      oldDelegate.isDark != isDark;
+      oldDelegate.isDark != isDark ||
+      oldDelegate.breadcrumbs.length != breadcrumbs.length;
 }

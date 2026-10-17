@@ -5,6 +5,20 @@ enum RideStatus {
   cancelled,
 }
 
+class RouteBreadcrumb {
+  const RouteBreadcrumb({
+    required this.latitude,
+    required this.longitude,
+    required this.timestamp,
+    this.speedKmh = 0.0,
+  });
+
+  final double latitude;
+  final double longitude;
+  final DateTime timestamp;
+  final double speedKmh;
+}
+
 class RideSession {
   const RideSession({
     required this.id,
@@ -14,8 +28,10 @@ class RideSession {
     this.endedAt,
     this.durationSeconds = 0,
     this.distanceKm = 0.0,
+    this.currentSpeedKmh = 0.0,
     this.costRwf = 0,
     this.status = RideStatus.active,
+    this.breadcrumbs = const [],
   });
 
   final String id;
@@ -25,8 +41,10 @@ class RideSession {
   final DateTime? endedAt;
   final int durationSeconds;
   final double distanceKm;
+  final double currentSpeedKmh;
   final int costRwf;
   final RideStatus status;
+  final List<RouteBreadcrumb> breadcrumbs;
 
   bool get isPaused => status == RideStatus.paused;
   bool get isActive => status == RideStatus.active;
@@ -42,8 +60,10 @@ class RideSession {
     DateTime? endedAt,
     int? durationSeconds,
     double? distanceKm,
+    double? currentSpeedKmh,
     int? costRwf,
     RideStatus? status,
+    List<RouteBreadcrumb>? breadcrumbs,
   }) {
     return RideSession(
       id: id,
@@ -53,8 +73,11 @@ class RideSession {
       endedAt: endedAt ?? this.endedAt,
       durationSeconds: durationSeconds ?? this.durationSeconds,
       distanceKm: distanceKm ?? this.distanceKm,
+      currentSpeedKmh: currentSpeedKmh ?? this.currentSpeedKmh,
       costRwf: costRwf ?? this.costRwf,
       status: status ?? this.status,
+      breadcrumbs: breadcrumbs ?? this.breadcrumbs,
     );
   }
 }
+

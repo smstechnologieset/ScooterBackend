@@ -5,7 +5,7 @@
 class AppConfig {
   const AppConfig._();
 
-  static const String appName = 'ISOKO Scooter';
+  static const String appName = 'ISOKO Bike';
   static const String apiBaseUrl = String.fromEnvironment(
     'API_BASE_URL',
     defaultValue: 'https://api.smstechnologieset.com',

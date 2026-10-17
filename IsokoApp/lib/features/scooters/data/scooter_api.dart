@@ -7,58 +7,48 @@ class ScooterApi {
 
   final ApiClient _apiClient;
 
-  /// Fetches all available scooters for riders from the discovery endpoint.
-  /// If the server has no active hardware registered yet, provides fallback
-  /// demo scooters so the client can always evaluate the map and list UI.
+  /// Fetches all available bikes for riders from the live production discovery endpoint.
   Future<List<Scooter>> listAvailableScooters({
     double? userLat,
     double? userLng,
   }) async {
+    final queryParams = <String, String>{};
+    if (userLat != null && userLng != null) {
+      queryParams['lat'] = userLat.toString();
+      queryParams['lng'] = userLng.toString();
+    }
+    final path = queryParams.isNotEmpty
+        ? '/rider/scooters?${Uri(queryParameters: queryParams).query}'
+        : '/rider/scooters';
+
     try {
-      final json = await _apiClient.getJson('/rider/scooters');
+      final json = await _apiClient.getJson(path);
       final list = json['scooters'];
-      if (list is List && list.isNotEmpty) {
-        final scooters = list
+      if (list is List) {
+        return list
             .whereType<Map<String, Object?>>()
             .map(_scooterFromRiderJson)
             .toList();
-        if (scooters.isNotEmpty) {
-          return scooters;
-        }
       }
+      return const [];
     } catch (_) {
-      // Fall through to demo fleet if backend is unreachable or not yet populated
+      // Return empty list on network or parse issues - zero mocks in production
+      return const [];
     }
-
-    return _generateDemoFleet(userLat: userLat, userLng: userLng);
   }
 
-  /// Looks up a specific scooter by public code or deviceId.
+  /// Looks up a specific bike by public code or deviceId.
   Future<Scooter> getScooterByCode(String code) async {
     final deviceId = ScooterCodeTranslator.toDeviceId(code);
     final lookupCode = deviceId.isNotEmpty ? deviceId : code.trim();
 
-    try {
-      final json = await _apiClient.getJson('/rider/scooters/$lookupCode');
-      final scooter = json['scooter'];
-      if (scooter is Map<String, Object?>) {
-        return _scooterFromRiderJson(scooter);
-      }
-    } catch (_) {
-      // Fall through to synthetic lookup for demo codes
+    final json = await _apiClient.getJson('/rider/scooters/$lookupCode');
+    final scooter = json['scooter'];
+    if (scooter is Map<String, Object?>) {
+      return _scooterFromRiderJson(scooter);
     }
 
-    final friendly = ScooterCodeTranslator.toFriendlyCode(code);
-    return Scooter(
-      id: deviceId.isNotEmpty ? deviceId : 'demo-$friendly',
-      publicCode: friendly,
-      online: true,
-      batteryPercent: 88,
-      rangeKm: 32.5,
-      latitude: -1.9441,
-      longitude: 30.0619,
-      lockState: ScooterLockState.locked,
-    );
+    throw FormatException('Bike not found for code: $code');
   }
 
   Future<Scooter> getStatus(String scooterId) async {
@@ -141,64 +131,6 @@ class ScooterApi {
       return value;
     }
 
-    throw FormatException('Missing required scooter field: $key');
-  }
-
-  List<Scooter> _generateDemoFleet({double? userLat, double? userLng}) {
-    final baseLat = userLat ?? -1.9441; // Kigali default if no user GPS
-    final baseLng = userLng ?? 30.0619;
-
-    return [
-      Scooter(
-        id: '7000000000001',
-        publicCode: 'ISK-001',
-        online: true,
-        batteryPercent: 92,
-        rangeKm: 36.8,
-        latitude: baseLat + 0.0022,
-        longitude: baseLng + 0.0018,
-        lockState: ScooterLockState.locked,
-      ),
-      Scooter(
-        id: '7000000000002',
-        publicCode: 'ISK-002',
-        online: true,
-        batteryPercent: 78,
-        rangeKm: 31.2,
-        latitude: baseLat - 0.0015,
-        longitude: baseLng + 0.0025,
-        lockState: ScooterLockState.locked,
-      ),
-      Scooter(
-        id: '7000000000003',
-        publicCode: 'ISK-003',
-        online: true,
-        batteryPercent: 85,
-        rangeKm: 34.0,
-        latitude: baseLat + 0.0031,
-        longitude: baseLng - 0.0019,
-        lockState: ScooterLockState.locked,
-      ),
-      Scooter(
-        id: '7000000000004',
-        publicCode: 'ISK-004',
-        online: true,
-        batteryPercent: 64,
-        rangeKm: 25.6,
-        latitude: baseLat - 0.0028,
-        longitude: baseLng - 0.0022,
-        lockState: ScooterLockState.locked,
-      ),
-      Scooter(
-        id: '7000000000005',
-        publicCode: 'ISK-005',
-        online: true,
-        batteryPercent: 95,
-        rangeKm: 38.0,
-        latitude: baseLat + 0.0012,
-        longitude: baseLng + 0.0038,
-        lockState: ScooterLockState.locked,
-      ),
-    ];
+    throw FormatException('Missing required bike field: $key');
   }
 }

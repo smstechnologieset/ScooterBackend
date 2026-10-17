@@ -17,13 +17,13 @@ export async function registerRiderRoutes(
     devices: DeviceService;
   }
 ): Promise<void> {
-  app.get("/rider/scooters", { preHandler: app.authenticateRider }, async (request, reply) => {
+  app.get("/rider/scooters", { preHandler: app.optionalAuthenticateRider }, async (request, reply) => {
     const query = listScootersQuerySchema.parse(request.query);
     const scooters = await services.devices.listAvailableScooters(query.limit);
     await reply.send({ scooters });
   });
 
-  app.get("/rider/scooters/:code", { preHandler: app.authenticateRider }, async (request, reply) => {
+  app.get("/rider/scooters/:code", { preHandler: app.optionalAuthenticateRider }, async (request, reply) => {
     const params = scooterCodeParamsSchema.parse(request.params);
     const scooter = await services.devices.findByCode(params.code);
 

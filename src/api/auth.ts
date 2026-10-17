@@ -31,6 +31,19 @@ export async function registerAuth(
     request.rider = await riderIdentityVerifier.verify(match[1]);
   });
 
+  app.decorate("optionalAuthenticateRider", async (request: FastifyRequest) => {
+    const authorization = request.headers.authorization;
+    const match = authorization?.match(/^Bearer\s+(.+)$/i);
+    if (!match?.[1]) {
+      return;
+    }
+    try {
+      request.rider = await riderIdentityVerifier.verify(match[1]);
+    } catch {
+      request.rider = null;
+    }
+  });
+
   app.decorate("requireAdmin", async (request: FastifyRequest) => {
     await request.jwtVerify();
 
@@ -44,6 +57,7 @@ declare module "fastify" {
   interface FastifyInstance {
     authenticate: (request: FastifyRequest) => Promise<void>;
     authenticateRider: (request: FastifyRequest) => Promise<void>;
+    optionalAuthenticateRider: (request: FastifyRequest) => Promise<void>;
     requireAdmin: (request: FastifyRequest) => Promise<void>;
   }
 

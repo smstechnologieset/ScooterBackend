@@ -64,8 +64,35 @@ const state = {
   showPassword: false,
   showParkingZones: localStorage.getItem("isoko-parking-zones") !== "0",
   sideTab: "details",
-  auditLogs: loadAuditLogs()
+  auditLogs: loadAuditLogs(),
+  theme: localStorage.getItem("isoko-admin-theme") ?? "dark",
+  geofence: {
+    enabled: localStorage.getItem("isoko-geofence-enabled") !== "0",
+    autoLock: localStorage.getItem("isoko-geofence-autolock") !== "0",
+    centerLat: parseFloat(localStorage.getItem("isoko-geofence-lat") ?? "-1.9441"),
+    centerLng: parseFloat(localStorage.getItem("isoko-geofence-lng") ?? "30.0619"),
+    radiusKm: parseFloat(localStorage.getItem("isoko-geofence-radius") ?? "12.0")
+  },
+  breachedBikeIds: new Set(),
+  activeBreachAlert: null,
+  geofenceModalOpen: false
 };
+
+document.documentElement.setAttribute("data-theme", state.theme);
+
+function haversineKm(lat1, lon1, lat2, lon2) {
+  const R = 6371;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
 
 const root = document.getElementById("root");
 
@@ -246,20 +273,43 @@ function renderDashboard() {
           <div class="brand-mark"><img src="/src/assets/logo.png" alt="ISOKO" /></div>
           <div>
             <h1>ISOKO Admin</h1>
-            <p>Fleet operations console</p>
+            <p>Bike fleet operations console</p>
           </div>
         </div>
         <div class="topbar-actions">
+          <button class="theme-toggle-btn" id="theme-toggle-btn" type="button" title="Switch Theme (Light / Dark)">
+            <span>${state.theme === "light" ? "🌙" : "☀️"}</span>
+          </button>
           <div class="admin-session-badge">
             <span class="active-pulse"></span>
             <span>${escapeHtml(state.adminEmail)}</span>
           </div>
-          <button class="icon-button" id="refresh-button" type="button" title="Refresh fleet">&#8635;</button>
+          <button class="icon-button" id="refresh-button" type="button" title="Refresh bike fleet">&#8635;</button>
           <button class="sign-out-btn" id="logout-button" type="button" title="Sign out">
             <span>&#8618;</span> Sign out
           </button>
         </div>
       </header>
+
+      ${
+        state.activeBreachAlert
+          ? `
+        <div class="geofence-alert-banner">
+          <div class="geofence-alert-content">
+            <span class="geofence-alert-icon">&#x1F6A8;</span>
+            <div>
+              <strong>SECURITY GEOFENCE BREACH:</strong>
+              <span>${escapeHtml(state.activeBreachAlert.message)}</span>
+            </div>
+          </div>
+          <div class="geofence-alert-actions">
+            <button type="button" class="geofence-alert-btn" id="geofence-lock-all-btn">Lock Breached Unit</button>
+            <button type="button" class="geofence-alert-btn" id="geofence-dismiss-btn">&#x2715; Dismiss</button>
+          </div>
+        </div>
+      `
+          : ""
+      }
 
       <div id="status-area"></div>
 
@@ -270,7 +320,7 @@ function renderDashboard() {
       <section class="controls">
         <div class="search">
           <span>&#8981;</span>
-          <input id="query-input" placeholder="Search device ID or code" value="${escapeHtml(state.query)}" />
+          <input id="query-input" placeholder="Search bike code or device ID" value="${escapeHtml(state.query)}" />
         </div>
         <div class="controls-right-group" style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
           <div class="segments" aria-label="Fleet filter">
@@ -301,17 +351,20 @@ function renderDashboard() {
             <div class="map-overlay-top">
               <div class="map-status-pill">
                 <span class="map-status-dot"></span>
-                <span id="map-status-text">Locating fleet...</span>
+                <span id="map-status-text">Locating bikes...</span>
               </div>
               <div class="map-actions-group">
-                <button type="button" class="map-control-btn" id="map-fit-bounds-btn" title="Fit all located scooters">
-                  <span>&#x2922;</span> Fit Fleet
+                <button type="button" class="map-control-btn" id="map-fit-bounds-btn" title="Fit all located bikes">
+                  <span>&#x2922;</span> Fit Bikes
                 </button>
                 <button type="button" class="map-control-btn" id="map-kigali-btn" title="Focus Kigali stations">
                   <span>&#x1F4CD;</span> Kigali
                 </button>
                 <button type="button" class="map-control-btn ${state.showParkingZones ? "active" : ""}" id="map-parking-btn" title="Toggle Kigali designated parking zones">
                   <span>&#x1F17F;</span> Parking
+                </button>
+                <button type="button" class="map-control-btn ${state.geofence.enabled ? "active" : ""}" id="map-geofence-btn" title="Configure Authorized Operational Geofence">
+                  <span>&#x1F6E1;</span> Geofence (${state.geofence.radiusKm}km)
                 </button>
               </div>
             </div>
@@ -322,7 +375,7 @@ function renderDashboard() {
         <aside class="side-panel">
           <div class="side-panel-tabs">
             <button type="button" class="side-panel-tab ${state.sideTab === "details" ? "active" : ""}" data-sidetab="details">
-              <span>&#x1F527;</span> Diagnostics
+              <span>&#x1F527;</span> Bike Diagnostics
             </button>
             <button type="button" class="side-panel-tab ${state.sideTab === "audit" ? "active" : ""}" data-sidetab="audit">
               <span>&#x1F4DC;</span> Audit Log
@@ -340,8 +393,92 @@ function renderDashboard() {
           </div>
         </aside>
       </section>
+
+      ${state.geofenceModalOpen ? geofenceModalHtml() : ""}
     </main>
   `;
+
+  document.getElementById("theme-toggle-btn")?.addEventListener("click", () => {
+    state.theme = state.theme === "light" ? "dark" : "light";
+    localStorage.setItem("isoko-admin-theme", state.theme);
+    document.documentElement.setAttribute("data-theme", state.theme);
+    if (mapInstance) {
+      mapInstance.setStyle(
+        state.theme === "light" ? "mapbox://styles/mapbox/light-v11" : "mapbox://styles/mapbox/dark-v11"
+      );
+      mapInstance.once("style.load", () => {
+        const bikes = filterScooters(state.fleet?.scooters ?? [], state.query, state.filter);
+        syncMarkersWithMap(bikes, false);
+        syncParkingZonesWithMap();
+        syncGeofenceWithMap();
+      });
+    }
+    renderDashboard();
+  });
+
+  document.getElementById("geofence-lock-all-btn")?.addEventListener("click", () => {
+    if (state.activeBreachAlert?.bikeId) {
+      const bike = (state.fleet?.scooters ?? []).find((s) => s.id === state.activeBreachAlert.bikeId);
+      if (bike) void runAction(bike, "lock");
+    }
+    state.activeBreachAlert = null;
+    renderDashboard();
+  });
+
+  document.getElementById("geofence-dismiss-btn")?.addEventListener("click", () => {
+    state.activeBreachAlert = null;
+    renderDashboard();
+  });
+
+  document.getElementById("map-geofence-btn")?.addEventListener("click", () => {
+    state.geofenceModalOpen = true;
+    renderDashboard();
+  });
+
+  // Modal event listeners
+  if (state.geofenceModalOpen) {
+    document.getElementById("geofence-modal-close")?.addEventListener("click", () => {
+      state.geofenceModalOpen = false;
+      renderDashboard();
+    });
+
+    document.getElementById("geofence-modal-cancel")?.addEventListener("click", () => {
+      state.geofenceModalOpen = false;
+      renderDashboard();
+    });
+
+    document.getElementById("geofence-modal-backdrop")?.addEventListener("click", (e) => {
+      if (e.target.id === "geofence-modal-backdrop") {
+        state.geofenceModalOpen = false;
+        renderDashboard();
+      }
+    });
+
+    const radiusSlider = document.getElementById("geofence-radius-slider");
+    const radiusDisplay = document.getElementById("geofence-radius-val");
+    radiusSlider?.addEventListener("input", (e) => {
+      if (radiusDisplay) radiusDisplay.textContent = `${e.target.value} km`;
+    });
+
+    document.getElementById("geofence-save-btn")?.addEventListener("click", () => {
+      const enabled = document.getElementById("geofence-enabled-toggle")?.checked ?? true;
+      const autoLock = document.getElementById("geofence-autolock-toggle")?.checked ?? true;
+      const radius = parseFloat(radiusSlider?.value ?? "12.0");
+
+      state.geofence.enabled = enabled;
+      state.geofence.autoLock = autoLock;
+      state.geofence.radiusKm = radius;
+
+      localStorage.setItem("isoko-geofence-enabled", enabled ? "1" : "0");
+      localStorage.setItem("isoko-geofence-autolock", autoLock ? "1" : "0");
+      localStorage.setItem("isoko-geofence-radius", String(radius));
+
+      state.geofenceModalOpen = false;
+      syncGeofenceWithMap();
+      checkGeofenceBreaches(state.fleet?.scooters ?? []);
+      renderDashboard();
+    });
+  }
 
   document.getElementById("refresh-button")?.addEventListener("click", () => void refreshFleet());
   document.getElementById("logout-button")?.addEventListener("click", handleLogout);
@@ -495,10 +632,11 @@ async function refreshFleet() {
     const response = await requestJson(`/admin/fleet?limit=500`, { method: "GET" });
     state.fleet = response;
     const count = response.scooters?.length ?? 0;
-    state.notice = count > 0 ? `Fleet updated: ${count} scooter${count === 1 ? "" : "s"} loaded.` : null;
+    state.notice = count > 0 ? `Fleet updated: ${count} bike${count === 1 ? "" : "s"} loaded.` : null;
     if (!state.selectedId && count > 0) {
       state.selectedId = response.scooters[0]?.id ?? null;
     }
+    checkGeofenceBreaches(response.scooters ?? []);
   } catch (error) {
     state.error = error instanceof Error ? error.message : "Unable to load fleet data.";
   } finally {
@@ -608,7 +746,7 @@ function parseResponseBody(bodyText) {
 
 function metricCards(metrics) {
   return [
-    metricCard("Fleet", metrics.total, "Scooters"),
+    metricCard("Fleet", metrics.total, "Bikes"),
     metricCard("Online", metrics.online, `${metrics.offline} offline`),
     metricCard("Locked", metrics.locked, `${metrics.unlocked} unlocked`),
     metricCard("Alerts", metrics.alerts, `${metrics.lowBattery} low battery`)
@@ -630,14 +768,14 @@ function metricCard(label, value, caption) {
 
 function tableHtml(scooters, selected) {
   if (!scooters || scooters.length === 0) {
-    return `<div class="empty">No scooters currently registered in the fleet.</div>`;
+    return `<div class="empty">No bikes currently registered in the fleet.</div>`;
   }
 
   return `
     <table>
       <thead>
         <tr>
-          <th>Scooter</th>
+          <th>Bike</th>
           <th>Status</th>
           <th>Battery</th>
           <th>Lock</th>
@@ -667,7 +805,7 @@ function tableHtml(scooters, selected) {
 
 function detailsHtml(scooter) {
   if (!scooter) {
-    return `<div class="empty">Select a scooter to view hardware and location details.</div>`;
+    return `<div class="empty">Select a bike to view hardware and location details.</div>`;
   }
 
   const hasGps = isGpsLocked(scooter);
@@ -1134,6 +1272,7 @@ function initOrUpdateMap(scooters) {
       mapInstance.on("load", () => {
         syncMarkersWithMap(scooters, true);
         syncParkingZonesWithMap();
+        syncGeofenceWithMap();
       });
     } catch (err) {
       console.error("Failed to initialize Mapbox:", err);
@@ -1148,6 +1287,7 @@ function initOrUpdateMap(scooters) {
     if (mapInstance.isStyleLoaded()) {
       syncMarkersWithMap(scooters, false);
       syncParkingZonesWithMap();
+      syncGeofenceWithMap();
     }
   }
 }
@@ -1169,7 +1309,7 @@ function syncMarkersWithMap(scooters, shouldFitBounds = false) {
       pendingDrawer.style.display = "flex";
       pendingDrawer.innerHTML = `
         <div>
-          <strong>${pendingCount} scooter${pendingCount === 1 ? "" : "s"}</strong> awaiting satellite GPS fix (will appear automatically on transmission).
+          <strong>${pendingCount} bike${pendingCount === 1 ? "" : "s"}</strong> awaiting satellite GPS fix (will appear automatically on transmission).
         </div>
         <button type="button" class="map-control-btn" id="pending-drawer-close" style="height:26px; font-size:11px;">Dismiss</button>
       `;
@@ -1195,27 +1335,28 @@ function syncMarkersWithMap(scooters, shouldFitBounds = false) {
     const isSelected = scooter.id === state.selectedId;
     const isLowBattery = (scooter.batteryPercent ?? 100) < lowBatteryThresholdPercent;
     const isOnline = scooter.status === "online";
+    const isBreached = state.breachedBikeIds.has(scooter.id);
 
     if (mapMarkers.has(scooter.id)) {
       const entry = mapMarkers.get(scooter.id);
       entry.marker.setLngLat([scooter.longitude, scooter.latitude]);
       entry.popup.setHTML(markerPopupHtml(scooter));
 
-      entry.el.className = `scooter-map-marker ${isOnline ? "online" : "offline"} ${
+      entry.el.className = `bike-map-marker scooter-map-marker ${isOnline ? "online" : "offline"} ${
         isLowBattery ? "low-battery" : ""
-      } ${isSelected ? "selected" : ""}`;
+      } ${isBreached ? "breached" : ""} ${isSelected ? "selected" : ""}`;
       const battEl = entry.el.querySelector(".marker-battery");
       if (battEl) battEl.textContent = `${scooter.batteryPercent ?? "--"}%`;
     } else {
       const el = document.createElement("div");
-      el.className = `scooter-map-marker ${isOnline ? "online" : "offline"} ${
+      el.className = `bike-map-marker scooter-map-marker ${isOnline ? "online" : "offline"} ${
         isLowBattery ? "low-battery" : ""
-      } ${isSelected ? "selected" : ""}`;
+      } ${isBreached ? "breached" : ""} ${isSelected ? "selected" : ""}`;
       el.dataset.markerId = scooter.id;
       el.innerHTML = `
         ${isOnline ? '<div class="marker-pulse-ring"></div>' : ""}
         <div class="marker-pin">
-          <span class="marker-icon">&#x1F6F4;</span>
+          <span class="marker-icon">&#x1F6B2;</span>
           <span class="marker-battery">${scooter.batteryPercent ?? "--"}%</span>
         </div>
         <div class="marker-arrow"></div>
@@ -1224,8 +1365,8 @@ function syncMarkersWithMap(scooters, shouldFitBounds = false) {
 
       const popup = new window.mapboxgl.Popup({
         offset: [0, -32],
-        closeButton: true,
-        closeOnClick: false,
+        closeButton: false,
+        closeOnClick: true,
         className: "isoko-dark-popup"
       }).setHTML(markerPopupHtml(scooter));
 
@@ -1237,6 +1378,9 @@ function syncMarkersWithMap(scooters, shouldFitBounds = false) {
             const sc = (state.fleet?.scooters ?? []).find((s) => s.id === scooter.id);
             if (sc) void runAction(sc, action);
           });
+        });
+        popupContent?.querySelector("[data-popup-close]")?.addEventListener("click", () => {
+          popup.remove();
         });
       });
 
@@ -1299,7 +1443,10 @@ function markerPopupHtml(scooter) {
           <strong>${escapeHtml(displayCode(scooter))}</strong>
           <small>${escapeHtml(scooter.deviceId)}</small>
         </div>
-        <span class="status ${scooter.status === "online" ? "online" : "offline"}">${scooter.status}</span>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span class="status ${scooter.status === "online" ? "online" : "offline"}">${scooter.status}</span>
+          <button type="button" class="map-popup-close-btn" data-popup-close title="Close popup">&#x2715;</button>
+        </div>
       </div>
       <div class="map-popup-body">
         <div class="map-popup-stat">
@@ -1320,8 +1467,8 @@ function markerPopupHtml(scooter) {
         </div>
       </div>
       <div class="map-popup-footer">
-        <button type="button" class="map-popup-btn" data-popup-action="lock" data-scooter="${scooter.id}">Lock</button>
-        <button type="button" class="map-popup-btn" data-popup-action="unlock" data-scooter="${scooter.id}">Unlock</button>
+        <button type="button" class="map-popup-btn" data-popup-action="lock" data-scooter="${scooter.id}">Lock Bike</button>
+        <button type="button" class="map-popup-btn" data-popup-action="unlock" data-scooter="${scooter.id}">Unlock Bike</button>
       </div>
     </div>
   `;
@@ -1360,8 +1507,8 @@ function syncParkingZonesWithMap() {
 
       const popup = new window.mapboxgl.Popup({
         offset: [0, -28],
-        closeButton: true,
-        closeOnClick: false,
+        closeButton: false,
+        closeOnClick: true,
         className: "isoko-dark-popup"
       }).setHTML(`
         <div class="map-popup-card">
@@ -1370,7 +1517,10 @@ function syncParkingZonesWithMap() {
               <strong style="color:#00d2ff;">${escapeHtml(station.name)}</strong>
               <small>Designated Parking Station</small>
             </div>
-            <span class="status-badge-cyan">100m Hub</span>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span class="status-badge-cyan">100m Hub</span>
+              <button type="button" class="map-popup-close-btn" data-popup-close title="Close popup">&#x2715;</button>
+            </div>
           </div>
           <div class="map-popup-body">
             <div class="map-popup-stat">
@@ -1388,6 +1538,13 @@ function syncParkingZonesWithMap() {
           </div>
         </div>
       `);
+
+      popup.on("open", () => {
+        const popupContent = popup.getElement();
+        popupContent?.querySelector("[data-popup-close]")?.addEventListener("click", () => {
+          popup.remove();
+        });
+      });
 
       el.addEventListener("click", (e) => {
         e.stopPropagation();
@@ -1459,5 +1616,176 @@ function createGeoJsonCircle(center, radiusKm = 0.1, points = 32) {
     }
   };
 }
+
+function geofenceModalHtml() {
+  return `
+    <div class="modal-backdrop" id="geofence-modal-backdrop">
+      <div class="modal-card">
+        <header class="modal-header">
+          <h2>&#x1F6E1; Operational Geofence Perimeter</h2>
+          <button type="button" class="modal-close-btn" id="geofence-modal-close" title="Close">&#x2715;</button>
+        </header>
+        <div class="modal-body">
+          <p style="font-size:12px; color:var(--secondary); margin:0;">
+            Define the authorized operational boundary for the bike fleet. If a bike moves outside this perimeter, the admin console alerts you immediately and automatically locks the bike.
+          </p>
+          <div class="form-toggle-row">
+            <div class="form-toggle-info">
+              <strong>Enable Geofence Monitoring</strong>
+              <small>Monitor fleet real-time GPS against operational perimeter</small>
+            </div>
+            <input type="checkbox" id="geofence-enabled-toggle" ${state.geofence.enabled ? "checked" : ""} style="width:18px; height:18px; accent-color:var(--green); cursor:pointer;" />
+          </div>
+          <div class="form-toggle-row">
+            <div class="form-toggle-info">
+              <strong>Automatic Motor Lock on Breach</strong>
+              <small>Auto-dispatch motor lock when bike exits boundary</small>
+            </div>
+            <input type="checkbox" id="geofence-autolock-toggle" ${state.geofence.autoLock ? "checked" : ""} style="width:18px; height:18px; accent-color:var(--green); cursor:pointer;" />
+          </div>
+          <div>
+            <div class="geofence-range-label">
+              <span>Boundary Radius</span>
+              <span id="geofence-radius-val">${state.geofence.radiusKm} km</span>
+            </div>
+            <input 
+              type="range" 
+              id="geofence-radius-slider" 
+              min="1" 
+              max="50" 
+              step="0.5" 
+              value="${state.geofence.radiusKm}" 
+              style="width:100%; accent-color:var(--green); cursor:pointer;" 
+            />
+            <div style="display:flex; justify-content:space-between; font-size:10px; color:var(--muted); margin-top:4px;">
+              <span>1 km (Hyper-local)</span>
+              <span>12 km (Greater Kigali)</span>
+              <span>50 km (Regional)</span>
+            </div>
+          </div>
+          <div style="font-size:11px; color:var(--secondary); background:rgba(255,255,255,0.03); padding:8px 10px; border-radius:6px; border:1px solid var(--border);">
+            &#x1F4CD; <strong>Perimeter Center:</strong> Kigali Operations (${state.geofence.centerLat.toFixed(4)}, ${state.geofence.centerLng.toFixed(4)})
+          </div>
+        </div>
+        <footer class="modal-footer">
+          <button type="button" class="map-control-btn" id="geofence-modal-cancel">Cancel</button>
+          <button type="button" class="btn-primary-submit" id="geofence-save-btn" style="width:auto; padding:8px 18px; font-size:13px;">Save Perimeter</button>
+        </footer>
+      </div>
+    </div>
+  `;
+}
+
+function syncGeofenceWithMap() {
+  if (!mapInstance || !mapInstance.isStyleLoaded()) return;
+
+  if (!state.geofence.enabled) {
+    if (mapInstance.getLayer("operational-geofence-fill")) {
+      mapInstance.removeLayer("operational-geofence-fill");
+    }
+    if (mapInstance.getLayer("operational-geofence-line")) {
+      mapInstance.removeLayer("operational-geofence-line");
+    }
+    if (mapInstance.getSource("operational-geofence")) {
+      mapInstance.removeSource("operational-geofence");
+    }
+    return;
+  }
+
+  const circleFeature = createGeoJsonCircle(
+    [state.geofence.centerLng, state.geofence.centerLat],
+    state.geofence.radiusKm,
+    64
+  );
+
+  const source = mapInstance.getSource("operational-geofence");
+  if (source) {
+    source.setData({
+      type: "FeatureCollection",
+      features: [circleFeature]
+    });
+  } else {
+    mapInstance.addSource("operational-geofence", {
+      type: "geojson",
+      data: {
+        type: "FeatureCollection",
+        features: [circleFeature]
+      }
+    });
+
+    mapInstance.addLayer({
+      id: "operational-geofence-fill",
+      type: "fill",
+      source: "operational-geofence",
+      paint: {
+        "fill-color": "#24d47e",
+        "fill-opacity": 0.08
+      }
+    });
+
+    mapInstance.addLayer({
+      id: "operational-geofence-line",
+      type: "line",
+      source: "operational-geofence",
+      paint: {
+        "line-color": "#24d47e",
+        "line-width": 2,
+        "line-opacity": 0.85,
+        "line-dasharray": [4, 2]
+      }
+    });
+  }
+}
+
+function checkGeofenceBreaches(bikes) {
+  if (!state.geofence.enabled) {
+    state.breachedBikeIds.clear();
+    state.activeBreachAlert = null;
+    return;
+  }
+
+  const located = bikes.filter(isGpsLocked);
+  let newlyBreached = null;
+
+  for (const bike of located) {
+    const dist = haversineKm(
+      state.geofence.centerLat,
+      state.geofence.centerLng,
+      bike.latitude,
+      bike.longitude
+    );
+
+    if (dist > state.geofence.radiusKm) {
+      state.breachedBikeIds.add(bike.id);
+      if (!newlyBreached) {
+        newlyBreached = { bike, dist };
+      }
+    } else {
+      state.breachedBikeIds.delete(bike.id);
+    }
+  }
+
+  if (newlyBreached) {
+    const { bike, dist } = newlyBreached;
+    const isLocked = bike.lockState === "locked";
+
+    if (state.geofence.autoLock && !isLocked && state.actionBusy !== `${bike.id}:lock`) {
+      state.activeBreachAlert = {
+        bikeId: bike.id,
+        message: `Bike ${displayCode(bike)} has breached the ${state.geofence.radiusKm}km boundary (${dist.toFixed(1)}km away). Dispatched automatic motor lock!`
+      };
+      // Dispatch auto-lock
+      void runAction(bike, "lock");
+    } else {
+      state.activeBreachAlert = {
+        bikeId: bike.id,
+        message: `Bike ${displayCode(bike)} is outside authorized boundary (${dist.toFixed(1)}km away)${isLocked ? " (Bike is safely locked)" : ""}.`
+      };
+    }
+  } else {
+    state.activeBreachAlert = null;
+  }
+}
+
 
 

@@ -5,6 +5,8 @@ import 'package:isoko_scooter/features/ride/domain/ride_session.dart';
 import 'package:isoko_scooter/features/scooters/domain/scooter.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   group('Ride Controller Flow', () {
     test('starts ride, pauses, resumes, and ends successfully', () {
       final container = ProviderContainer();

@@ -245,7 +245,7 @@ class AppStringsEn implements AppStrings {
   String get getIsokoAnywhere => 'Get Isoko\nAnywhere....';
   @override
   String get pleaseAllowLocation =>
-      'Please allow us to use your location to show nearby scooters available';
+      'Please allow us to use your location to show nearby bikes available';
   @override
   String get enableLocation => 'Enable Location';
   @override
@@ -258,7 +258,7 @@ class AppStringsEn implements AppStrings {
   String get locationBlocked => 'Allow location from your device settings.';
 
   @override
-  String get findScooters => 'Find Scooters';
+  String get findScooters => 'Find Bikes';
   @override
   String get nearYou => 'Near you';
   @override
@@ -270,7 +270,7 @@ class AppStringsEn implements AppStrings {
   @override
   String get battery => 'Battery';
   @override
-  String get availableScooters => 'Available Scooters';
+  String get availableScooters => 'Available Bikes';
 
   @override
   String get scanQrCode => 'Scan QR Code';
@@ -521,7 +521,7 @@ class AppStringsFr implements AppStrings {
   String get getIsokoAnywhere => 'ISOKO Partout\navec vous....';
   @override
   String get pleaseAllowLocation =>
-      'Veuillez autoriser l\'accès à la localisation pour voir les trottinettes à proximité';
+      'Veuillez autoriser l\'accès à la localisation pour voir les vélos à proximité';
   @override
   String get enableLocation => 'Activer la localisation';
   @override
@@ -536,7 +536,7 @@ class AppStringsFr implements AppStrings {
       'Autorisez la localisation dans les paramètres de votre appareil.';
 
   @override
-  String get findScooters => 'Trouver une trottinette';
+  String get findScooters => 'Trouver un vélo';
   @override
   String get nearYou => 'Près de vous';
   @override
@@ -548,7 +548,7 @@ class AppStringsFr implements AppStrings {
   @override
   String get battery => 'Batterie';
   @override
-  String get availableScooters => 'Trottinettes disponibles';
+  String get availableScooters => 'Vélos disponibles';
 
   @override
   String get scanQrCode => 'Scanner le code QR';

@@ -93,7 +93,7 @@ class MenuScreen extends ConsumerWidget {
                         padding: const EdgeInsets.symmetric(horizontal: 24),
                         children: [
                           _SidebarMenuItem(
-                            icon: Icons.electric_scooter_rounded,
+                            icon: Icons.pedal_bike_rounded,
                             label: tr.rideHistory,
                             onTap: () => context.go('/ride-history'),
                           ),
@@ -189,7 +189,7 @@ class MenuScreen extends ConsumerWidget {
                                 child: _StatCell(
                                   label: tr.ridesTaken,
                                   value: '39 Rides',
-                                  icon: Icons.electric_scooter_rounded,
+                                  icon: Icons.pedal_bike_rounded,
                                 ),
                               ),
                               const SizedBox(width: 12),
