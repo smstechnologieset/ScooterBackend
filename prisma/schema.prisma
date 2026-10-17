@@ -142,3 +142,52 @@ model AuditLog {
   @@index([adminId, createdAt])
   @@index([entityType, entityId])
 }
+
+model Payment {
+  id             String    @id @default(uuid())
+  riderId        String
+  rideId         String?
+  amount         Int
+  currency       String    @default("RWF")
+  provider       String
+  phoneNumber    String?
+  status         String    @default("pending")
+  transactionRef String?   @unique
+  idempotencyKey String?   @unique
+  failureReason  String?
+  metadata       Json?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([riderId, createdAt])
+  @@index([status])
+  @@index([transactionRef])
+}
+
+model Wallet {
+  id           String              @id @default(uuid())
+  riderId      String              @unique
+  balance      Int                 @default(0)
+  currency     String              @default("RWF")
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+  transactions WalletTransaction[]
+
+  @@index([riderId])
+}
+
+model WalletTransaction {
+  id           String   @id @default(uuid())
+  walletId     String
+  amount       Int
+  type         String
+  reason       String
+  paymentId    String?
+  balanceAfter Int
+  reference    String?
+  createdAt    DateTime @default(now())
+  wallet       Wallet   @relation(fields: [walletId], references: [id], onDelete: Cascade)
+
+  @@index([walletId, createdAt])
+}
+

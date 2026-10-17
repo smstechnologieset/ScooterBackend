@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../ride/data/ride_controller.dart';
 import '../../../scooters/domain/scooter_code_translator.dart';
+import '../../data/payment_api.dart';
 
 class PaymentScreen extends ConsumerStatefulWidget {
   const PaymentScreen({super.key});
@@ -20,7 +21,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
   bool _isProcessing = false;
 
   // Wallet and Payment State
-  int _walletBalance = 2500;
+  final int _walletBalance = 2500;
   final TextEditingController _momoPhoneController =
       TextEditingController(text: '078 812 3456');
   final TextEditingController _airtelPhoneController =
@@ -267,16 +268,51 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                 width: double.infinity,
                 height: 50,
                 child: ElevatedButton(
-                  onPressed: () {
+                  onPressed: () async {
+                    final messenger = ScaffoldMessenger.of(context);
                     Navigator.of(ctx).pop();
-                    setState(() => _walletBalance += selectedAmount);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(
-                            'Successfully added $selectedAmount RWF to ISOKO Wallet!'),
-                        backgroundColor: AppTheme.primaryGreen,
-                      ),
-                    );
+                    final providerCode = topUpSource == 'MTN Mobile money'
+                        ? 'mtn_momo'
+                        : 'airtel_money';
+                    final phone = topUpSource == 'MTN Mobile money'
+                        ? _momoPhoneController.text.trim()
+                        : _airtelPhoneController.text.trim();
+
+                    try {
+                      final res = await ref.read(paymentApiProvider).topUpWallet(
+                            amount: selectedAmount,
+                            provider: providerCode,
+                            phoneNumber: phone,
+                          );
+
+                      if (!mounted) return;
+
+                      _showLiveUssdSheet(
+                        paymentId: res.id,
+                        provider: topUpSource,
+                        phone: phone,
+                        amount: selectedAmount,
+                        isTopUp: true,
+                        onComplete: () {
+                          ref.read(walletNotifierProvider.notifier).refresh();
+                          messenger.showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                  'Successfully added $selectedAmount RWF to ISOKO Wallet!'),
+                              backgroundColor: AppTheme.primaryGreen,
+                            ),
+                          );
+                        },
+                      );
+                    } catch (e) {
+                      if (!mounted) return;
+                      messenger.showSnackBar(
+                        SnackBar(
+                          content: Text('Top up failed: $e'),
+                          backgroundColor: AppTheme.danger,
+                        ),
+                      );
+                    }
                   },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppTheme.primaryGreen,
@@ -302,20 +338,73 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
     );
   }
 
-  void _triggerMobileMoneyPush(String provider, String phone, int amount) {
+  Future<void> _triggerMobileMoneyPush(
+    String providerCode,
+    String providerLabel,
+    String phone,
+    int amount,
+  ) async {
+    setState(() => _isProcessing = true);
+    final lastRide = ref.read(lastCompletedRideProvider);
+
+    try {
+      final res = await ref.read(paymentApiProvider).initiatePayment(
+            amount: amount,
+            provider: providerCode,
+            phoneNumber: phone,
+            rideId: lastRide?.id,
+            promoCode: _appliedPromoCode,
+          );
+
+      if (!mounted) return;
+      setState(() => _isProcessing = false);
+
+      _showLiveUssdSheet(
+        paymentId: res.id,
+        provider: providerLabel,
+        phone: phone,
+        amount: amount,
+        isTopUp: false,
+        onComplete: () {
+          ref.read(walletNotifierProvider.notifier).refresh();
+          context.go('/payment-success', extra: amount);
+        },
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isProcessing = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Payment initiation failed: $e'),
+          backgroundColor: AppTheme.danger,
+        ),
+      );
+    }
+  }
+
+  void _showLiveUssdSheet({
+    required String paymentId,
+    required String provider,
+    required String phone,
+    required int amount,
+    required bool isTopUp,
+    required VoidCallback onComplete,
+  }) {
     showModalBottomSheet<void>(
       context: context,
       isDismissible: false,
       enableDrag: false,
       backgroundColor: Colors.transparent,
       builder: (ctx) {
-        return _UssdPushSimulationSheet(
+        return _LiveUssdPushSheet(
+          paymentId: paymentId,
           provider: provider,
           phone: phone,
           amount: amount,
+          isTopUp: isTopUp,
           onComplete: () {
             Navigator.of(ctx).pop();
-            context.go('/payment-success');
+            onComplete();
           },
         );
       },
@@ -323,26 +412,58 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
   }
 
   Future<void> _processPayment() async {
+    final lastRide = ref.read(lastCompletedRideProvider);
+    final walletState = ref.read(walletNotifierProvider);
+    final currentWalletBalance = walletState.value?.balance ?? _walletBalance;
+
     if (_totalDue == 0) {
       setState(() => _isProcessing = true);
-      await Future<void>.delayed(const Duration(milliseconds: 700));
+      try {
+        await ref.read(paymentApiProvider).initiatePayment(
+              amount: 0,
+              provider: 'wallet',
+              rideId: lastRide?.id,
+              promoCode: _appliedPromoCode,
+            );
+      } catch (_) {}
       if (mounted) {
         setState(() => _isProcessing = false);
-        context.go('/payment-success');
+        context.go('/payment-success', extra: 0);
       }
       return;
     }
 
     if (_selectedMethod == 'Isoko Wallet') {
-      if (_walletBalance >= _totalDue) {
-        setState(() {
-          _isProcessing = true;
-          _walletBalance -= _totalDue;
-        });
-        await Future<void>.delayed(const Duration(milliseconds: 800));
-        if (mounted) {
-          setState(() => _isProcessing = false);
-          context.go('/payment-success');
+      if (currentWalletBalance >= _totalDue) {
+        setState(() => _isProcessing = true);
+        try {
+          final res = await ref.read(paymentApiProvider).initiatePayment(
+                amount: _totalDue,
+                provider: 'wallet',
+                rideId: lastRide?.id,
+                promoCode: _appliedPromoCode,
+              );
+          if (res.walletBalance != null) {
+            ref
+                .read(walletNotifierProvider.notifier)
+                .updateBalance(res.walletBalance!);
+          } else {
+            ref.read(walletNotifierProvider.notifier).refresh();
+          }
+          if (mounted) {
+            setState(() => _isProcessing = false);
+            context.go('/payment-success', extra: _totalDue);
+          }
+        } catch (e) {
+          if (mounted) {
+            setState(() => _isProcessing = false);
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Wallet payment failed: $e'),
+                backgroundColor: AppTheme.danger,
+              ),
+            );
+          }
         }
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -356,7 +477,8 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
     }
 
     if (_selectedMethod == 'MTN Mobile money') {
-      _triggerMobileMoneyPush(
+      await _triggerMobileMoneyPush(
+        'mtn_momo',
         'MTN Mobile Money',
         _momoPhoneController.text.trim(),
         _totalDue,
@@ -365,7 +487,8 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
     }
 
     if (_selectedMethod == 'Airtel Money') {
-      _triggerMobileMoneyPush(
+      await _triggerMobileMoneyPush(
+        'airtel_money',
         'Airtel Money Rwanda',
         _airtelPhoneController.text.trim(),
         _totalDue,
@@ -375,10 +498,27 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
 
     // Card or Bank
     setState(() => _isProcessing = true);
-    await Future<void>.delayed(const Duration(milliseconds: 1400));
-    if (mounted) {
-      setState(() => _isProcessing = false);
-      context.go('/payment-success');
+    try {
+      await ref.read(paymentApiProvider).initiatePayment(
+            amount: _totalDue,
+            provider: 'card',
+            rideId: lastRide?.id,
+            promoCode: _appliedPromoCode,
+          );
+      if (mounted) {
+        setState(() => _isProcessing = false);
+        context.go('/payment-success', extra: _totalDue);
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isProcessing = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Card payment failed: $e'),
+            backgroundColor: AppTheme.danger,
+          ),
+        );
+      }
     }
   }
 
@@ -687,6 +827,9 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
 
   // Step 2: Matching payment-options-screen.png with interactive inputs & wallet
   Widget _buildPaymentOptionsStep(BuildContext context) {
+    final walletState = ref.watch(walletNotifierProvider);
+    final currentWalletBalance = walletState.value?.balance ?? _walletBalance;
+
     return SingleChildScrollView(
       padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 8),
       child: Column(
@@ -782,7 +925,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        '$_walletBalance RWF',
+                        '$currentWalletBalance RWF',
                         style: TextStyle(
                           color: context.textPrimary,
                           fontSize: 20,
@@ -1103,45 +1246,78 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
   }
 }
 
-class _UssdPushSimulationSheet extends StatefulWidget {
-  const _UssdPushSimulationSheet({
+class _LiveUssdPushSheet extends ConsumerStatefulWidget {
+  const _LiveUssdPushSheet({
+    required this.paymentId,
     required this.provider,
     required this.phone,
     required this.amount,
     required this.onComplete,
+    this.isTopUp = false,
   });
 
+  final String paymentId;
   final String provider;
   final String phone;
   final int amount;
   final VoidCallback onComplete;
+  final bool isTopUp;
 
   @override
-  State<_UssdPushSimulationSheet> createState() =>
-      _UssdPushSimulationSheetState();
+  ConsumerState<_LiveUssdPushSheet> createState() => _LiveUssdPushSheetState();
 }
 
-class _UssdPushSimulationSheetState extends State<_UssdPushSimulationSheet> {
-  int _secondsLeft = 3;
-  Timer? _timer;
+class _LiveUssdPushSheetState extends ConsumerState<_LiveUssdPushSheet> {
+  Timer? _pollingTimer;
+  bool _isConfirming = false;
+  int _secondsElapsed = 0;
 
   @override
   void initState() {
     super.initState();
-    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (_secondsLeft > 1) {
-        setState(() => _secondsLeft--);
-      } else {
-        _timer?.cancel();
-        widget.onComplete();
+    // Poll backend every 2.5 seconds to detect live USSD PIN approval
+    _pollingTimer = Timer.periodic(const Duration(milliseconds: 2500), (timer) async {
+      if (!mounted) return;
+      setState(() => _secondsElapsed += 2);
+
+      try {
+        final res = await ref.read(paymentApiProvider).getPaymentStatus(widget.paymentId);
+        if (res.isCompleted && mounted) {
+          _pollingTimer?.cancel();
+          widget.onComplete();
+        }
+      } catch (_) {
+        // Continue polling
       }
     });
   }
 
   @override
   void dispose() {
-    _timer?.cancel();
+    _pollingTimer?.cancel();
     super.dispose();
+  }
+
+  Future<void> _handleConfirmApproval() async {
+    if (_isConfirming) return;
+    setState(() => _isConfirming = true);
+
+    try {
+      final res = await ref.read(paymentApiProvider).confirmUssdPayment(widget.paymentId);
+      if (res.isCompleted && mounted) {
+        _pollingTimer?.cancel();
+        widget.onComplete();
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isConfirming = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Verification check: $e'),
+          backgroundColor: AppTheme.danger,
+        ),
+      );
+    }
   }
 
   @override
@@ -1175,7 +1351,7 @@ class _UssdPushSimulationSheetState extends State<_UssdPushSimulationSheet> {
           ),
           const SizedBox(height: 18),
           Text(
-            '${widget.provider} Push Sent',
+            widget.isTopUp ? 'Top Up Authorization Sent' : '${widget.provider} Push Sent',
             style: TextStyle(
               color: context.textPrimary,
               fontSize: 20,
@@ -1198,23 +1374,34 @@ class _UssdPushSimulationSheetState extends State<_UssdPushSimulationSheet> {
             backgroundColor: Color(0xFF233028),
           ),
           const SizedBox(height: 14),
-          Text(
-            'Awaiting approval ($_secondsLeft s)...',
-            style: TextStyle(
-              color: context.textSecondary,
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-            ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const SizedBox(
+                width: 12,
+                height: 12,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: AppTheme.primaryGreen,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'Awaiting your handset approval (${_secondsElapsed}s)...',
+                style: TextStyle(
+                  color: context.textSecondary,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 22),
           SizedBox(
             width: double.infinity,
             height: 48,
             child: ElevatedButton(
-              onPressed: () {
-                _timer?.cancel();
-                widget.onComplete();
-              },
+              onPressed: _isConfirming ? null : _handleConfirmApproval,
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppTheme.primaryGreen,
                 shape: RoundedRectangleBorder(
@@ -1222,12 +1409,37 @@ class _UssdPushSimulationSheetState extends State<_UssdPushSimulationSheet> {
                 ),
                 elevation: 0,
               ),
-              child: const Text(
-                'Simulate PIN Approved',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w800,
-                ),
+              child: _isConfirming
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.black,
+                      ),
+                    )
+                  : const Text(
+                      'I Have Approved PIN',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 15,
+                      ),
+                    ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          TextButton(
+            onPressed: () {
+              _pollingTimer?.cancel();
+              Navigator.of(context).pop();
+            },
+            child: Text(
+              'Dismiss',
+              style: TextStyle(
+                color: context.textSecondary,
+                fontWeight: FontWeight.w600,
+                fontSize: 13,
               ),
             ),
           ),

@@ -3,11 +3,13 @@ import rateLimit from "@fastify/rate-limit";
 import { AppConfig } from "../config/env";
 import { CommandDispatcher } from "../services/commandDispatcher";
 import { DeviceService } from "../services/deviceService";
+import { PaymentService } from "../services/paymentService";
 import { RideService } from "../services/rideService";
 import { RiderIdentityVerifier } from "../services/riderIdentityVerifier";
 import { registerAuth } from "./auth";
 import { errorHandler } from "./errorHandler";
 import { registerAdminRoutes } from "./routes/admin";
+import { registerPaymentRoutes } from "./routes/payments";
 import { registerRiderRoutes } from "./routes/rider";
 import { registerScooterRoutes } from "./routes/scooters";
 
@@ -18,6 +20,7 @@ export async function buildApiServer(
     devices: DeviceService;
     rides: RideService;
     riderIdentityVerifier: RiderIdentityVerifier;
+    payments: PaymentService;
   }
 ): Promise<FastifyInstance> {
   const app = Fastify({
@@ -48,6 +51,7 @@ export async function buildApiServer(
   app.get("/health", async () => ({ ok: true }));
   await registerAdminRoutes(app, { commands: services.commands, devices: services.devices });
   await registerRiderRoutes(app, { devices: services.devices });
+  await registerPaymentRoutes(app, { payments: services.payments });
   await registerScooterRoutes(app, services);
 
   return app;

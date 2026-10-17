@@ -2,10 +2,13 @@ import { appConfig } from "./config/env";
 import { prisma } from "./database/prisma";
 import { PrismaCommandRepository } from "./repositories/prismaCommandRepository";
 import { PrismaDeviceRepository } from "./repositories/prismaDeviceRepository";
+import { PrismaPaymentRepository } from "./repositories/prismaPaymentRepository";
 import { ManufacturerProtocolParser } from "./protocol/parser";
 import { TcpSocketManager } from "./tcp/socketManager";
 import { CommandDispatcher } from "./services/commandDispatcher";
 import { DeviceService } from "./services/deviceService";
+import { PaymentService } from "./services/paymentService";
+import { PaypackOrDirectPaymentGateway } from "./services/paymentGateway";
 import { RideService } from "./services/rideService";
 import { SupabaseRiderIdentityVerifier } from "./services/riderIdentityVerifier";
 import { buildApiServer } from "./api/server";
@@ -16,6 +19,9 @@ async function main(): Promise<void> {
   const protocolParser = new ManufacturerProtocolParser(appConfig.protocol);
   const deviceRepository = new PrismaDeviceRepository(prisma);
   const commandRepository = new PrismaCommandRepository(prisma);
+  const paymentRepository = new PrismaPaymentRepository(prisma);
+  const paymentGateway = new PaypackOrDirectPaymentGateway();
+  const paymentService = new PaymentService(paymentRepository, paymentGateway);
   const sequenceGenerator = new ProtocolSequenceGenerator();
   const tcpSocketManager = new TcpSocketManager(appConfig, protocolParser, deviceRepository, logger);
   const commandDispatcher = new CommandDispatcher(
@@ -33,7 +39,8 @@ async function main(): Promise<void> {
     commands: commandDispatcher,
     devices: deviceService,
     rides: rideService,
-    riderIdentityVerifier
+    riderIdentityVerifier,
+    payments: paymentService
   });
 
   await tcpSocketManager.start();

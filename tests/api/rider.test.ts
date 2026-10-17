@@ -61,7 +61,8 @@ describe("Rider Routes", () => {
         commands: {} as CommandDispatcher,
         devices: deviceService,
         rides: {} as RideService,
-        riderIdentityVerifier: riderVerifier
+        riderIdentityVerifier: riderVerifier,
+        payments: {} as any
       }
     );
 
@@ -123,7 +124,8 @@ describe("Rider Routes", () => {
         commands: {} as CommandDispatcher,
         devices: deviceService,
         rides: {} as RideService,
-        riderIdentityVerifier: riderVerifier
+        riderIdentityVerifier: riderVerifier,
+        payments: {} as any
       }
     );
 
@@ -161,7 +163,8 @@ describe("Rider Routes", () => {
         commands: {} as CommandDispatcher,
         devices: deviceService,
         rides: {} as RideService,
-        riderIdentityVerifier: { verify: vi.fn() }
+        riderIdentityVerifier: { verify: vi.fn() },
+        payments: {} as any
       }
     );
 

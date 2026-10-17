@@ -1,3 +1,7 @@
+export class BadRequestError extends Error {
+  public override readonly name = "BadRequestError";
+}
+
 export class NotFoundError extends Error {
   public override readonly name = "NotFoundError";
 }

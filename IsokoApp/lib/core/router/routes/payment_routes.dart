@@ -18,7 +18,10 @@ final paymentRoutes = <RouteBase>[
   GoRoute(
     path: '/payment-success',
     name: 'payment-success',
-    builder: (context, state) => const PaymentSuccessScreen(),
+    builder: (context, state) {
+      final amount = state.extra is int ? state.extra as int : null;
+      return PaymentSuccessScreen(amountPaid: amount);
+    },
   ),
   GoRoute(
     path: '/rate-ride',

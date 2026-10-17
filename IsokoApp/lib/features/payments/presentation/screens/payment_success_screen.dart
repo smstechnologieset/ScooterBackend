@@ -4,10 +4,13 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/theme/app_theme.dart';
 
 class PaymentSuccessScreen extends StatelessWidget {
-  const PaymentSuccessScreen({super.key});
+  const PaymentSuccessScreen({super.key, this.amountPaid});
+
+  final int? amountPaid;
 
   @override
   Widget build(BuildContext context) {
+    final effectiveAmount = amountPaid ?? 0;
     return Scaffold(
       backgroundColor: context.scaffoldBg,
       appBar: AppBar(
@@ -55,7 +58,7 @@ class PaymentSuccessScreen extends StatelessWidget {
 
               // Subtitle matching mockup
               Text(
-                'Your payment of 0 RWF has\nbeen processed',
+                'Your payment of $effectiveAmount RWF has\nbeen processed',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   color: context.textSecondary,

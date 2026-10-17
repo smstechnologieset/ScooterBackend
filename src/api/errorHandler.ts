@@ -1,6 +1,7 @@
 import { FastifyError, FastifyReply, FastifyRequest } from "fastify";
 import { ProtocolConfigurationError } from "../protocol/errors";
 import {
+  BadRequestError,
   CommandDispatchError,
   ForbiddenError,
   NotFoundError,
@@ -10,6 +11,11 @@ import {
 } from "../utils/errors";
 
 export async function errorHandler(error: FastifyError, _request: FastifyRequest, reply: FastifyReply): Promise<void> {
+  if (error instanceof BadRequestError) {
+    await reply.status(400).send({ error: "bad_request", message: error.message });
+    return;
+  }
+
   if (error instanceof NotFoundError) {
     await reply.status(404).send({ error: "not_found", message: error.message });
     return;
