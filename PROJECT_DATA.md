@@ -7393,4 +7393,29 @@ Future priorities (When Hardware & SIM Cards Arrive):
      - Verified clean compilation with zero linting or bundling errors (`npm run build`).
      - As this update affects only the frontend `admin-web`, it deploys directly to Vercel without requiring any VPS commands or downtime.
 
+## Session History: Bikes Terminology, Light Mode, Geofence Auto-Lock, GPS Breadcrumbs & Live VPS Deployment (October 2026)
+
+- **Context:** User requested:
+  1. Fixing the map popup close/dismiss button in Admin Web.
+  2. Adding an Admin Dashboard Light Mode with reactive Mapbox styling.
+  3. Adding Admin Geofence perimeter configuration with automatic motor lock dispatch upon breach.
+  4. Full hardware terminology & icon overhaul across Admin Web and mobile app ("scooters" -> "bikes", `🚲`, `Icons.pedal_bike_rounded`, custom canvas bicycle rendering).
+  5. Removal of all mock fleets/histories across web and mobile.
+  6. Connecting the Flutter app to live `GET /rider/scooters` and implementing real-time GPS polyline breadcrumb tracking via `Geolocator.getPositionStream`.
+  7. Successful deployment to the Contabo VPS at `/opt/scooter-lock` managed by PM2 under user `deploy`.
+- **Actions Taken:**
+  1. **Map Popup Dismissal:** Added explicit `[data-popup-close]` buttons on popups and enabled `closeOnClick: true` on `mapboxgl.Popup` instances.
+  2. **Admin Light Mode:** Added light theme tokens to `admin-web/src/styles.css`, light/dark toggle button with `localStorage` persistence, and dynamic Mapbox style reloading (`mapbox://styles/mapbox/light-v11` vs `mapbox://styles/mapbox/dark-v11`).
+  3. **Geofence Auto-Lock:** Added Geofence Perimeter configuration modal in Admin Web with radius slider, boundary visualization, breach alert banners, pulsing marker animations, and automatic `POST /api/scooters/:id/lock` motor shutdown.
+  4. **Bike Terminology & Icons:** Renamed app branding to `'ISOKO Bike'` in `app_config.dart` and `app_localizations.dart`; replaced scooter icons with pedal bike icons; built custom bicycle canvas rendering in `map_marker_generator.dart`.
+  5. **Zero Mocks:** Removed `_generateDemoFleet` in `scooter_api.dart` and mock ride histories in `ride_controller.dart`.
+  6. **Rider Endpoint Accessibility:** Added `optionalAuthenticateRider` in `src/api/auth.ts` and `src/api/routes/rider.ts` so guest and signed-in riders can discover physical bikes without 401 errors.
+  7. **GPS Polyline Tracker:** Integrated `Geolocator.getPositionStream` (high accuracy, 3m filter) in `ride_controller.dart` and built dynamic polyline breadcrumbs with live puck and speed gauges in `ride_active_screen.dart`.
+  8. **VPS Deployment Verified:**
+     - Code pulled to `/opt/scooter-lock` via `git pull origin main` (commit `dd3e93b`).
+     - Recompiled via `npm run build` (`tsc -p tsconfig.json`).
+     - Ownership normalized to `deploy:deploy`.
+     - PM2 process `scooter-lock-backend` restarted and running `online` with 66.9MB RAM and 0% CPU.
+     - Verified public health endpoint `https://api.smstechnologieset.com/health` returns `{"ok":true}` and `https://api.smstechnologieset.com/rider/scooters` returns live fleet devices.
+
 For every future significant action, update current architecture/status/configuration/dependencies/file history/objectives, preserve historical decisions/problems/session entries, append a Session History entry, and refresh this final Resume Context before ending the session.
