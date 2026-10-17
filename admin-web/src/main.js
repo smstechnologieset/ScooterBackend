@@ -1294,9 +1294,6 @@ function initOrUpdateMap(scooters) {
     return;
   }
 
-  const mapElement = document.getElementById("fleet-map");
-  if (!mapElement) return;
-
   // Verify mapInstance is attached to the current active DOM element
   if (mapInstance) {
     let isAttached = false;
