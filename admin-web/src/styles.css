@@ -2354,9 +2354,20 @@ dd {
   font-size: 11px;
   font-weight: 800;
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35), 0 0 12px rgba(16, 185, 129, 0.5);
-  pointer-events: none;
+  pointer-events: auto;
+  cursor: grab;
   white-space: nowrap;
   transform: translate(-50%, -50%);
+  user-select: none;
+  transition: transform 0.15s ease;
+}
+
+.geofence-center-marker:hover {
+  transform: translate(-50%, -50%) scale(1.06);
+}
+
+.geofence-center-marker:active {
+  cursor: grabbing;
 }
 
 .geofence-center-marker span {
@@ -2367,6 +2378,106 @@ dd {
   font-size: 10px;
   opacity: 0.9;
   font-weight: 600;
+}
+
+/* ==========================================================================
+   Map Pinning & Interaction Mode Styles
+   ========================================================================== */
+
+.parking-station-marker {
+  cursor: grab;
+}
+
+.parking-station-marker:active {
+  cursor: grabbing;
+}
+
+.map-control-btn.active.station-pin-mode {
+  background: rgba(0, 210, 255, 0.25) !important;
+  border-color: #00d2ff !important;
+  color: #00d2ff !important;
+  animation: pin-mode-pulse 1.5s infinite alternate;
+}
+
+[data-theme="light"] .map-control-btn.active.station-pin-mode {
+  background: #00d2ff !important;
+  color: #ffffff !important;
+  border-color: #00b4db !important;
+}
+
+@keyframes pin-mode-pulse {
+  0% { box-shadow: 0 0 4px rgba(0, 210, 255, 0.3); }
+  100% { box-shadow: 0 0 14px rgba(0, 210, 255, 0.8); }
+}
+
+.pin-crosshair-mode,
+.pin-crosshair-mode #fleet-map,
+.pin-crosshair-mode .mapboxgl-canvas-container,
+.pin-crosshair-mode .mapboxgl-canvas {
+  cursor: crosshair !important;
+}
+
+.map-pin-banner {
+  position: absolute;
+  top: 56px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 16px;
+  background: rgba(15, 23, 42, 0.95);
+  backdrop-filter: blur(8px);
+  color: #ffffff;
+  border: 1px solid #00d2ff;
+  border-radius: 30px;
+  font-size: 12px;
+  font-weight: 700;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4), 0 0 14px rgba(0, 210, 255, 0.3);
+  z-index: 30;
+  animation: banner-drop 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+  white-space: nowrap;
+}
+
+[data-theme="light"] .map-pin-banner {
+  background: rgba(255, 255, 255, 0.98);
+  color: #0f172a;
+  border-color: #0090e7;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15), 0 0 10px rgba(0, 144, 231, 0.25);
+}
+
+@keyframes banner-drop {
+  0% { transform: translate(-50%, -10px); opacity: 0; }
+  100% { transform: translate(-50%, 0); opacity: 1; }
+}
+
+.btn-pin-on-map {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  padding: 9px 14px;
+  background: rgba(16, 185, 129, 0.12);
+  border: 1px solid #10b981;
+  border-radius: 8px;
+  color: #10b981;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+[data-theme="light"] .btn-pin-on-map {
+  background: rgba(16, 185, 129, 0.15);
+  color: #047857;
+  border-color: #10b981;
+}
+
+.btn-pin-on-map:hover {
+  background: #10b981;
+  color: #ffffff;
+  transform: translateY(-1px);
 }
 
 .btn-focus-map {

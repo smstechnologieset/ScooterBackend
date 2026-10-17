@@ -14,16 +14,35 @@ const DEFAULT_MAPBOX_TOKEN = atob(
   "cGsuZXlKMUlqb2ljMjF6ZEdWamFDSXNJbUVpT2lKamJYTTNiekJwTUdrd05IQnZNbnB4Y1RJellubzFjM3A1SW4wLmMwRFVfQmRzd25mRE5LZTlMNlh4dlE="
 );
 
-const KIGALI_PARKING_STATIONS = [
-  { id: "station-001", name: "Kigali Convention Centre", latitude: -1.9536, longitude: 29.8894 },
-  { id: "station-002", name: "Kigali Heights", latitude: -1.9496, longitude: 29.8767 },
-  { id: "station-003", name: "Nyabugogo Bus Park", latitude: -1.9390, longitude: 29.8518 },
-  { id: "station-004", name: "Kimironko Market", latitude: -1.9400, longitude: 29.8980 },
-  { id: "station-005", name: "Kigali City Tower", latitude: -1.9437, longitude: 29.8759 },
-  { id: "station-006", name: "Remera Stadium", latitude: -1.9478, longitude: 29.8990 },
-  { id: "station-007", name: "University of Rwanda - Gikondo", latitude: -1.9652, longitude: 29.8730 },
-  { id: "station-008", name: "Kicukiro Centre", latitude: -1.9740, longitude: 29.8640 }
+const parkingStationsStorageKey = "isoko-parking-stations-v1";
+
+const DEFAULT_PARKING_STATIONS = [
+  { id: "station-001", name: "Kigali Convention Centre", latitude: -1.9536, longitude: 29.8894, radiusMeters: 100 },
+  { id: "station-002", name: "Kigali Heights", latitude: -1.9496, longitude: 29.8767, radiusMeters: 100 },
+  { id: "station-003", name: "Nyabugogo Bus Park", latitude: -1.9390, longitude: 29.8518, radiusMeters: 100 },
+  { id: "station-004", name: "Kimironko Market", latitude: -1.9400, longitude: 29.8980, radiusMeters: 100 },
+  { id: "station-005", name: "Kigali City Tower", latitude: -1.9437, longitude: 29.8759, radiusMeters: 100 },
+  { id: "station-006", name: "Remera Stadium", latitude: -1.9478, longitude: 29.8990, radiusMeters: 100 },
+  { id: "station-007", name: "University of Rwanda - Gikondo", latitude: -1.9652, longitude: 29.8730, radiusMeters: 100 },
+  { id: "station-008", name: "Kicukiro Centre", latitude: -1.9740, longitude: 29.8640, radiusMeters: 100 }
 ];
+
+function loadParkingStations() {
+  try {
+    const raw = localStorage.getItem(parkingStationsStorageKey);
+    if (!raw) return DEFAULT_PARKING_STATIONS;
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) && parsed.length > 0 ? parsed : DEFAULT_PARKING_STATIONS;
+  } catch {
+    return DEFAULT_PARKING_STATIONS;
+  }
+}
+
+function saveParkingStations(stations) {
+  try {
+    localStorage.setItem(parkingStationsStorageKey, JSON.stringify(stations));
+  } catch {}
+}
 
 let mapInstance = null;
 const mapMarkers = new Map();
@@ -64,6 +83,10 @@ const state = {
   loginError: null,
   showPassword: false,
   showParkingZones: localStorage.getItem("isoko-parking-zones") !== "0",
+  parkingStations: loadParkingStations(),
+  mapInteractionMode: null, // null | 'pin_station' | 'pin_geofence_center'
+  stationModalOpen: false,
+  editingStation: null,
   sideTab: "details",
   auditLogs: loadAuditLogs(),
   theme: localStorage.getItem("isoko-admin-theme") ?? "dark",
@@ -374,6 +397,9 @@ function renderDashboard() {
                 <button type="button" class="map-control-btn ${state.showParkingZones ? "active" : ""}" id="map-parking-btn" title="Toggle Kigali designated parking zones">
                   <span>&#x1F17F;</span> Parking
                 </button>
+                <button type="button" class="map-control-btn ${state.mapInteractionMode === "pin_station" ? "active station-pin-mode" : ""}" id="map-add-station-btn" title="Pin a new parking station on the map">
+                  <span>&#x2795;</span> Add Station
+                </button>
                 <button type="button" class="map-control-btn ${state.geofence.enabled ? "active geofence" : ""}" id="map-geofence-toggle-btn" title="Toggle Geofence operational boundary">
                   <span>&#x1F6E1;</span> Geofence (${state.geofence.radiusKm}km)
                 </button>
@@ -382,6 +408,7 @@ function renderDashboard() {
                 </button>
               </div>
             </div>
+            <div class="map-pin-banner" id="map-pin-banner" style="display:none;"></div>
             <div class="map-pending-drawer" id="map-pending-drawer" style="display:none;"></div>
           </div>
           <div class="fleet-table" id="fleet-table" style="${state.viewMode === "map" ? "display:none;" : ""}"></div>
@@ -409,6 +436,7 @@ function renderDashboard() {
       </section>
 
       <div id="geofence-modal-slot"></div>
+      <div id="station-modal-slot"></div>
     </main>
   `;
 
@@ -506,6 +534,20 @@ function renderDashboard() {
     syncParkingZonesWithMap();
   });
 
+  document.getElementById("map-add-station-btn")?.addEventListener("click", () => {
+    state.showParkingZones = true;
+    localStorage.setItem("isoko-parking-zones", "1");
+    const parkingBtn = document.getElementById("map-parking-btn");
+    if (parkingBtn) parkingBtn.classList.add("active");
+    syncParkingZonesWithMap();
+
+    state.mapInteractionMode = state.mapInteractionMode === "pin_station" ? null : "pin_station";
+    updatePinBanner();
+  });
+
+  updateStationModalSlot();
+  updatePinBanner();
+
   updateDashboardContent();
 }
 
@@ -602,6 +644,13 @@ function attachGeofenceModalListeners() {
     syncGeofenceWithMap();
   });
 
+  document.getElementById("geofence-pick-center-btn")?.addEventListener("click", () => {
+    state.geofenceModalOpen = false;
+    updateGeofenceSlots();
+    state.mapInteractionMode = "pin_geofence_center";
+    updatePinBanner();
+  });
+
   document.getElementById("geofence-save-btn")?.addEventListener("click", () => {
     const enabled = document.getElementById("geofence-enabled-toggle")?.checked ?? true;
     const autoLock = document.getElementById("geofence-autolock-toggle")?.checked ?? true;
@@ -620,6 +669,209 @@ function attachGeofenceModalListeners() {
     syncGeofenceWithMap();
     checkGeofenceBreaches(state.fleet?.scooters ?? []);
   });
+}
+
+function updatePinBanner() {
+  const banner = document.getElementById("map-pin-banner");
+  const mapContainer = document.getElementById("fleet-map-container");
+  if (!banner) return;
+
+  if (state.mapInteractionMode === "pin_station") {
+    banner.style.display = "flex";
+    banner.innerHTML = `
+      <span>&#x1F4CD; <strong>Pin Station Mode:</strong> Click anywhere on the map to place a new Parking Station pin.</span>
+      <button type="button" class="map-control-btn" id="map-pin-banner-cancel" style="height:26px; font-size:11px; padding:0 10px;">Cancel</button>
+    `;
+    mapContainer?.classList.add("pin-crosshair-mode");
+    document.getElementById("map-pin-banner-cancel")?.addEventListener("click", () => {
+      state.mapInteractionMode = null;
+      updatePinBanner();
+    });
+  } else if (state.mapInteractionMode === "pin_geofence_center") {
+    banner.style.display = "flex";
+    banner.innerHTML = `
+      <span>&#x1F6E1; <strong>Geofence Center Mode:</strong> Click anywhere on the map to set the new operational Hub center pin.</span>
+      <button type="button" class="map-control-btn" id="map-pin-banner-cancel" style="height:26px; font-size:11px; padding:0 10px;">Cancel</button>
+    `;
+    mapContainer?.classList.add("pin-crosshair-mode");
+    document.getElementById("map-pin-banner-cancel")?.addEventListener("click", () => {
+      state.mapInteractionMode = null;
+      updatePinBanner();
+    });
+  } else {
+    banner.style.display = "none";
+    mapContainer?.classList.remove("pin-crosshair-mode");
+  }
+
+  const addStationBtn = document.getElementById("map-add-station-btn");
+  if (addStationBtn) {
+    addStationBtn.classList.toggle("active", state.mapInteractionMode === "pin_station");
+    addStationBtn.classList.toggle("station-pin-mode", state.mapInteractionMode === "pin_station");
+  }
+}
+
+function updateStationModalSlot() {
+  const modalSlot = document.getElementById("station-modal-slot");
+  if (modalSlot) {
+    modalSlot.innerHTML = state.stationModalOpen ? stationModalHtml() : "";
+    if (state.stationModalOpen) {
+      attachStationModalListeners();
+    }
+  }
+}
+
+function stationModalHtml() {
+  const station = state.editingStation || {
+    id: null,
+    name: "",
+    latitude: -1.9536,
+    longitude: 29.8894,
+    radiusMeters: 100
+  };
+  const isEdit = Boolean(station.id);
+
+  return `
+    <div class="modal-backdrop" id="station-modal-backdrop">
+      <div class="modal-card">
+        <header class="modal-header">
+          <h2><span>&#x1F17F;</span> ${isEdit ? "Edit Parking Station" : "Pin Designated Station"}</h2>
+          <button type="button" class="modal-close-btn" id="station-modal-close" title="Close">&#x2715;</button>
+        </header>
+        <div class="modal-body">
+          <p style="font-size:12px; color:var(--secondary); margin:0;">
+            ${isEdit ? "Update station parameters and designated drop-off radius." : "Set up a new authorized bike drop-off station pinned on the map."}
+          </p>
+          <div class="form-group" style="margin:0;">
+            <label for="station-name-input" style="display:block; font-size:12px; font-weight:700; margin-bottom:6px; color:var(--text);">Station Name</label>
+            <input 
+              id="station-name-input" 
+              type="text" 
+              placeholder="e.g. Kigali Convention Centre or Remera Hub" 
+              value="${escapeHtml(station.name)}" 
+              style="width:100%; padding:10px 12px; font-size:13px; background:var(--surface-raised); border:1px solid var(--border); border-radius:8px; color:var(--text);"
+              autofocus
+            />
+          </div>
+          <div class="form-group" style="margin:0;">
+            <label for="station-radius-select" style="display:block; font-size:12px; font-weight:700; margin-bottom:6px; color:var(--text);">Authorized Drop-Off Zone Radius</label>
+            <select 
+              id="station-radius-select" 
+              style="width:100%; padding:10px 12px; font-size:13px; background:var(--surface-raised); border:1px solid var(--border); border-radius:8px; color:var(--text); cursor:pointer;"
+            >
+              <option value="50" ${station.radiusMeters === 50 ? "selected" : ""}>50 meters (Compact curbside spot)</option>
+              <option value="100" ${(station.radiusMeters || 100) === 100 ? "selected" : ""}>100 meters (Standard Station - Recommended)</option>
+              <option value="150" ${station.radiusMeters === 150 ? "selected" : ""}>150 meters (Large Plaza)</option>
+              <option value="200" ${station.radiusMeters === 200 ? "selected" : ""}>200 meters (Transit Hub)</option>
+            </select>
+          </div>
+          <div style="font-size:11px; color:var(--secondary); background:rgba(0,210,255,0.06); border:1px solid rgba(0,210,255,0.2); padding:10px 12px; border-radius:8px; display:flex; align-items:center; justify-content:space-between;">
+            <div>
+              <span style="color:#00d2ff; font-weight:700;">&#x1F4CD; Pinned Location:</span>
+              <span style="font-family:monospace; margin-left:4px;">${station.latitude.toFixed(5)}, ${station.longitude.toFixed(5)}</span>
+            </div>
+            <button type="button" class="map-control-btn" id="station-reposition-btn" style="height:26px; font-size:11px; padding:0 8px;">Reposition</button>
+          </div>
+        </div>
+        <footer class="modal-footer">
+          <button type="button" class="map-control-btn" id="station-modal-cancel">Cancel</button>
+          <button type="button" class="btn-primary-submit" id="station-save-btn" style="width:auto; padding:8px 18px; font-size:13px;">Save Station</button>
+        </footer>
+      </div>
+    </div>
+  `;
+}
+
+function attachStationModalListeners() {
+  document.getElementById("station-modal-close")?.addEventListener("click", () => {
+    state.stationModalOpen = false;
+    state.editingStation = null;
+    updateStationModalSlot();
+  });
+
+  document.getElementById("station-modal-cancel")?.addEventListener("click", () => {
+    state.stationModalOpen = false;
+    state.editingStation = null;
+    updateStationModalSlot();
+  });
+
+  document.getElementById("station-modal-backdrop")?.addEventListener("click", (e) => {
+    if (e.target.id === "station-modal-backdrop") {
+      state.stationModalOpen = false;
+      state.editingStation = null;
+      updateStationModalSlot();
+    }
+  });
+
+  document.getElementById("station-reposition-btn")?.addEventListener("click", () => {
+    state.stationModalOpen = false;
+    updateStationModalSlot();
+    state.mapInteractionMode = "pin_station";
+    updatePinBanner();
+  });
+
+  document.getElementById("station-save-btn")?.addEventListener("click", () => {
+    const nameInput = document.getElementById("station-name-input");
+    const radiusSelect = document.getElementById("station-radius-select");
+    const name = nameInput?.value.trim() || "Designated Station";
+    const radiusMeters = parseInt(radiusSelect?.value || "100", 10);
+
+    if (state.editingStation?.id) {
+      // Edit existing
+      const existing = state.parkingStations.find((s) => s.id === state.editingStation.id);
+      if (existing) {
+        existing.name = name;
+        existing.radiusMeters = radiusMeters;
+      }
+    } else {
+      // Add new
+      const newStation = {
+        id: `station-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        name,
+        latitude: state.editingStation?.latitude ?? -1.9536,
+        longitude: state.editingStation?.longitude ?? 29.8894,
+        radiusMeters
+      };
+      state.parkingStations.push(newStation);
+    }
+
+    saveParkingStations(state.parkingStations);
+    state.stationModalOpen = false;
+    state.editingStation = null;
+    state.showParkingZones = true;
+    updateStationModalSlot();
+    syncParkingZonesWithMap();
+    state.notice = `Parking station "${name}" saved successfully.`;
+    updateDashboardContent();
+  });
+}
+
+function handleMapClick(e) {
+  if (state.mapInteractionMode === "pin_station") {
+    state.mapInteractionMode = null;
+    updatePinBanner();
+    state.editingStation = {
+      id: null,
+      name: "",
+      latitude: e.lngLat.lat,
+      longitude: e.lngLat.lng,
+      radiusMeters: 100
+    };
+    state.stationModalOpen = true;
+    updateStationModalSlot();
+  } else if (state.mapInteractionMode === "pin_geofence_center") {
+    state.mapInteractionMode = null;
+    updatePinBanner();
+    state.geofence.centerLng = e.lngLat.lng;
+    state.geofence.centerLat = e.lngLat.lat;
+    localStorage.setItem("isoko-geofence-lng", String(e.lngLat.lng));
+    localStorage.setItem("isoko-geofence-lat", String(e.lngLat.lat));
+    syncGeofenceWithMap();
+    checkGeofenceBreaches(state.fleet?.scooters ?? []);
+    state.notice = `Operational geofence center pinned at [${e.lngLat.lat.toFixed(4)}, ${e.lngLat.lng.toFixed(4)}].`;
+    updateDashboardContent();
+    state.geofenceModalOpen = true;
+    updateGeofenceSlots();
+  }
 }
 
 function updateDashboardContent() {
@@ -695,6 +947,8 @@ function updateDashboardContent() {
   });
 
   updateGeofenceSlots();
+  updateStationModalSlot();
+  updatePinBanner();
   initOrUpdateMap(scooters);
 
   if (refreshButton) {
@@ -1372,6 +1626,10 @@ function initOrUpdateMap(scooters) {
 
       mapInstance.addControl(new window.mapboxgl.NavigationControl({ showCompass: true }), "bottom-right");
 
+      mapInstance.on("click", (e) => {
+        handleMapClick(e);
+      });
+
       mapInstance.on("load", () => {
         syncMarkersWithMap(scooters, true);
         syncParkingZonesWithMap();
@@ -1577,6 +1835,42 @@ function markerPopupHtml(scooter) {
   `;
 }
 
+function parkingStationPopupHtml(station) {
+  const radius = station.radiusMeters || 100;
+  return `
+    <div class="map-popup-card">
+      <div class="map-popup-header">
+        <div>
+          <strong style="color:#00d2ff;">${escapeHtml(station.name)}</strong>
+          <small>Designated Parking Station</small>
+        </div>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span class="status-badge-cyan">${radius}m Zone</span>
+          <button type="button" class="map-popup-close-btn" data-popup-close title="Close popup">&#x2715;</button>
+        </div>
+      </div>
+      <div class="map-popup-body">
+        <div class="map-popup-stat">
+          <span>Latitude</span>
+          <strong>${station.latitude.toFixed(4)}</strong>
+        </div>
+        <div class="map-popup-stat">
+          <span>Longitude</span>
+          <strong>${station.longitude.toFixed(4)}</strong>
+        </div>
+        <div class="map-popup-stat" style="grid-column:1/-1;">
+          <span>Drop-Off Validation</span>
+          <strong style="color:var(--green);">&#x2714; Authorized Drop-Off Zone</strong>
+        </div>
+      </div>
+      <div class="map-popup-footer" style="display:flex; gap:8px;">
+        <button type="button" class="map-popup-btn" data-station-edit="${station.id}">&#x270F; Edit Station</button>
+        <button type="button" class="map-popup-btn" data-station-delete="${station.id}" style="color:var(--danger); border-color:rgba(228,63,90,0.4);">Delete</button>
+      </div>
+    </div>
+  `;
+}
+
 function syncParkingZonesWithMap() {
   if (!mapInstance) return;
   if (!mapInstance.isStyleLoaded()) {
@@ -1601,11 +1895,29 @@ function syncParkingZonesWithMap() {
     return;
   }
 
-  // Add station DOM markers
-  for (const station of KIGALI_PARKING_STATIONS) {
-    if (!parkingMarkers.has(station.id)) {
+  // Remove markers that are no longer in state.parkingStations
+  const activeIds = new Set(state.parkingStations.map((s) => s.id));
+  for (const [id, marker] of parkingMarkers.entries()) {
+    if (!activeIds.has(id)) {
+      marker.remove();
+      parkingMarkers.delete(id);
+    }
+  }
+
+  // Add or update station DOM markers
+  for (const station of state.parkingStations) {
+    if (parkingMarkers.has(station.id)) {
+      const marker = parkingMarkers.get(station.id);
+      marker.setLngLat([station.longitude, station.latitude]);
+      const el = marker.getElement();
+      if (el) {
+        const lbl = el.querySelector(".station-label");
+        if (lbl) lbl.textContent = station.name;
+      }
+    } else {
       const el = document.createElement("div");
       el.className = "parking-station-marker";
+      el.title = "Drag to reposition parking station";
       el.innerHTML = `
         <div class="station-pulse-ring"></div>
         <div class="station-pin">&#x1F17F;</div>
@@ -1617,39 +1929,27 @@ function syncParkingZonesWithMap() {
         closeButton: false,
         closeOnClick: true,
         className: "isoko-dark-popup"
-      }).setHTML(`
-        <div class="map-popup-card">
-          <div class="map-popup-header">
-            <div>
-              <strong style="color:#00d2ff;">${escapeHtml(station.name)}</strong>
-              <small>Designated Parking Station</small>
-            </div>
-            <div style="display:flex; align-items:center; gap:8px;">
-              <span class="status-badge-cyan">100m Hub</span>
-              <button type="button" class="map-popup-close-btn" data-popup-close title="Close popup">&#x2715;</button>
-            </div>
-          </div>
-          <div class="map-popup-body">
-            <div class="map-popup-stat">
-              <span>Latitude</span>
-              <strong>${station.latitude.toFixed(4)}</strong>
-            </div>
-            <div class="map-popup-stat">
-              <span>Longitude</span>
-              <strong>${station.longitude.toFixed(4)}</strong>
-            </div>
-            <div class="map-popup-stat" style="grid-column:1/-1;">
-              <span>Drop-Off Validation</span>
-              <strong style="color:var(--green);">&#x2714; Valid Parking Zone</strong>
-            </div>
-          </div>
-        </div>
-      `);
+      }).setHTML(parkingStationPopupHtml(station));
 
       popup.on("open", () => {
         const popupContent = popup.getElement();
         popupContent?.querySelector("[data-popup-close]")?.addEventListener("click", () => {
           popup.remove();
+        });
+        popupContent?.querySelector("[data-station-edit]")?.addEventListener("click", () => {
+          popup.remove();
+          state.editingStation = { ...station };
+          state.stationModalOpen = true;
+          updateStationModalSlot();
+        });
+        popupContent?.querySelector("[data-station-delete]")?.addEventListener("click", () => {
+          if (!confirm(`Delete parking station "${station.name}"?`)) return;
+          popup.remove();
+          state.parkingStations = state.parkingStations.filter((s) => s.id !== station.id);
+          saveParkingStations(state.parkingStations);
+          syncParkingZonesWithMap();
+          state.notice = `Parking station "${station.name}" removed.`;
+          updateDashboardContent();
         });
       });
 
@@ -1658,20 +1958,40 @@ function syncParkingZonesWithMap() {
         popup.addTo(mapInstance);
       });
 
-      const marker = new window.mapboxgl.Marker({ element: el })
+      const marker = new window.mapboxgl.Marker({ 
+        element: el,
+        draggable: true
+      })
         .setLngLat([station.longitude, station.latitude])
         .setPopup(popup)
         .addTo(mapInstance);
+
+      marker.on("dragend", () => {
+        const lngLat = marker.getLngLat();
+        station.longitude = lngLat.lng;
+        station.latitude = lngLat.lat;
+        saveParkingStations(state.parkingStations);
+        syncParkingZonesWithMap();
+        state.notice = `Parking station "${station.name}" repositioned to [${lngLat.lat.toFixed(4)}, ${lngLat.lng.toFixed(4)}].`;
+        updateDashboardContent();
+      });
 
       parkingMarkers.set(station.id, marker);
     }
   }
 
-  // Add 100m geofence circle GeoJSON source & layers if style loaded
-  if (mapInstance.isStyleLoaded() && !mapInstance.getSource("kigali-geofences")) {
-    const features = KIGALI_PARKING_STATIONS.map((station) =>
-      createGeoJsonCircle([station.longitude, station.latitude], 0.1, 32)
-    );
+  // Add/update parking station geofence circle GeoJSON source & layers
+  const features = state.parkingStations.map((station) =>
+    createGeoJsonCircle([station.longitude, station.latitude], (station.radiusMeters || 100) / 1000, 32)
+  );
+
+  const source = mapInstance.getSource("kigali-geofences");
+  if (source) {
+    source.setData({
+      type: "FeatureCollection",
+      features
+    });
+  } else if (mapInstance.isStyleLoaded()) {
     mapInstance.addSource("kigali-geofences", {
       type: "geojson",
       data: {
@@ -1770,8 +2090,20 @@ function geofenceModalHtml() {
               <span>50 km (Regional)</span>
             </div>
           </div>
-          <div style="font-size:11px; color:var(--secondary); background:rgba(255,255,255,0.03); padding:8px 10px; border-radius:6px; border:1px solid var(--border);">
-            &#x1F4CD; <strong>Perimeter Center:</strong> Kigali Operations (${state.geofence.centerLat.toFixed(4)}, ${state.geofence.centerLng.toFixed(4)})
+          <div style="font-size:11px; color:var(--secondary); background:rgba(255,255,255,0.03); padding:10px 12px; border-radius:8px; border:1px solid var(--border); display:flex; flex-direction:column; gap:8px;">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <div>
+                &#x1F4CD; <strong>Perimeter Center:</strong>
+                <span id="geofence-center-coords" style="font-family:monospace; margin-left:4px;">${state.geofence.centerLat.toFixed(4)}, ${state.geofence.centerLng.toFixed(4)}</span>
+              </div>
+              <span style="font-size:10px; color:var(--green); font-weight:700;">&#x2714; Operational Hub</span>
+            </div>
+            <button type="button" class="btn-pin-on-map" id="geofence-pick-center-btn">
+              <span>&#x1F4CD;</span> Move Center by Clicking on Map
+            </button>
+            <div style="font-size:10px; color:var(--muted); text-align:center;">
+              Tip: You can also drag the &#x1F6E1; Geofence Hub pin directly across the map anytime!
+            </div>
           </div>
         </div>
         <footer class="modal-footer">
@@ -1885,10 +2217,44 @@ function syncGeofenceWithMap() {
   if (!geofenceCenterMarker) {
     const el = document.createElement("div");
     el.className = "geofence-center-marker";
+    el.title = "Drag to reposition operational geofence hub";
     el.innerHTML = `<span>&#x1F6E1;</span> <strong>Geofence Hub</strong> <small>(${state.geofence.radiusKm}km)</small>`;
-    geofenceCenterMarker = new window.mapboxgl.Marker({ element: el })
+
+    geofenceCenterMarker = new window.mapboxgl.Marker({ 
+      element: el,
+      draggable: true
+    })
       .setLngLat([state.geofence.centerLng, state.geofence.centerLat])
       .addTo(mapInstance);
+
+    geofenceCenterMarker.on("drag", () => {
+      const lngLat = geofenceCenterMarker.getLngLat();
+      state.geofence.centerLng = lngLat.lng;
+      state.geofence.centerLat = lngLat.lat;
+      const circleFeature = createGeoJsonCircle(
+        [lngLat.lng, lngLat.lat],
+        state.geofence.radiusKm,
+        64
+      );
+      const src = mapInstance.getSource("operational-geofence");
+      if (src) {
+        src.setData({
+          type: "FeatureCollection",
+          features: [circleFeature]
+        });
+      }
+    });
+
+    geofenceCenterMarker.on("dragend", () => {
+      const lngLat = geofenceCenterMarker.getLngLat();
+      state.geofence.centerLng = lngLat.lng;
+      state.geofence.centerLat = lngLat.lat;
+      localStorage.setItem("isoko-geofence-lng", String(lngLat.lng));
+      localStorage.setItem("isoko-geofence-lat", String(lngLat.lat));
+      checkGeofenceBreaches(state.fleet?.scooters ?? []);
+      state.notice = `Geofence hub repositioned to [${lngLat.lat.toFixed(4)}, ${lngLat.lng.toFixed(4)}].`;
+      updateDashboardContent();
+    });
   } else {
     geofenceCenterMarker.setLngLat([state.geofence.centerLng, state.geofence.centerLat]);
     const el = geofenceCenterMarker.getElement();
