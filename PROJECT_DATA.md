@@ -7417,5 +7417,9 @@ Future priorities (When Hardware & SIM Cards Arrive):
      - Ownership normalized to `deploy:deploy`.
      - PM2 process `scooter-lock-backend` restarted and running `online` with 66.9MB RAM and 0% CPU.
      - Verified public health endpoint `https://api.smstechnologieset.com/health` returns `{"ok":true}` and `https://api.smstechnologieset.com/rider/scooters` returns live fleet devices.
+  9. **Map Shell Preservation & Light Mode Polish:**
+     - Resolved map disappearance bug: `renderDashboard()` previously overwrote `root.innerHTML`, tearing `#fleet-map` out of the DOM on theme switch and geofence save, causing `mapInstance` to point to an orphaned container. Added shell persistence (`#dashboard-shell`) with isolated `#geofence-alert-slot` and `#geofence-modal-slot` updates so `#fleet-map` remains continuously mounted.
+     - Enhanced `initOrUpdateMap` with DOM attachment verification and theme-aware initial style loading.
+     - Completed comprehensive Light Mode CSS coverage: metric stat cards, side panel tabs, hardware details, table rows, alert banners, modal, and action buttons now feature clean, high-contrast light aesthetics with no unstyled dark boxes.
 
 For every future significant action, update current architecture/status/configuration/dependencies/file history/objectives, preserve historical decisions/problems/session entries, append a Session History entry, and refresh this final Resume Context before ending the session.
