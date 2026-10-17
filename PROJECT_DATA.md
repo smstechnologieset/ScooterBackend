@@ -7365,4 +7365,32 @@ Future priorities (When Hardware & SIM Cards Arrive):
   8. Unified Admin Web API configuration: removed localhost:3000 branching so that both local Vite dev and Vercel production consoles target the single production VPS API (`https://api.smstechnologieset.com`) directly. Stopped redundant local backend process.
   9. Operational rule: Proactively notify the user whenever backend or database schema modifications are committed that require a VPS git pull, always providing the exact commands to pull, rebuild, and restart via PM2.
 
+## Session History: Option A - Admin Web Operations & Fleet Control (October 2026)
+
+- **Context:** The user selected Option A (Admin Web Operations & Fleet Control on Vercel) to transform the admin web console into a comprehensive, high-fidelity operations and hardware monitoring platform.
+- **Actions Taken:**
+  1. **Interactive Fleet Map View (Mapbox GL JS v3.4.0):**
+     - Embedded dark theme (`mapbox://styles/mapbox/dark-v11`) with custom interactive scooter markers featuring battery percentage badges (`⚡ 85%`), pulsing green radar rings for online sockets, and selected outer glow rings.
+     - Implemented bidirectional camera synchronization: clicking a table row flies the camera smoothly to the scooter and reveals its popup; clicking a map marker highlights the row in the table and opens hardware telemetry in the side panel.
+     - Added view mode toggle buttons in `.controls`: `Split` (side-by-side map & table), `Map Only` (expanded full-width geospatial view), and `Table Only` (compact tabular list).
+     - Added dynamic bounds fitting (`fitFleetBounds`) for all units with valid GPS fixes, plus a dedicated "Awaiting GPS" drawer for units awaiting satellite lock.
+  2. **Kigali Designated Parking Stations & Geofences:**
+     - Integrated the 8 official Kigali drop-off stations (`KIGALI_PARKING_STATIONS`) matching mobile app definitions (`KCC`, `Kigali Heights`, `Nyabugogo`, `Kimironko`, `City Tower`, `Remera Stadium`, `UR Gikondo`, `Kicukiro Centre`).
+     - Added circular 100m geofence GeoJSON polygon layers with cyan fill and dashed stroke borders.
+     - Added custom station markers with `🅿` icon badges, radar pulses, and informative popup cards.
+     - Added a dedicated `🅿 Parking` toggle button in the map control header to show or hide geofences on demand.
+     - Added a quick "Focus Kigali" camera fly-to button (`[29.8894, -1.9536]`, zoom 13).
+  3. **Live Command Audit & Telemetry Log Stream:**
+     - Added session and `localStorage` command audit tracking (`state.auditLogs`) capturing every command dispatched (`LOCK`, `OPEN`, `RECORD`, `CCID`, `UPDATE`).
+     - Real-time round-trip latency measurement (`performance.now()`) displayed with execution time pill (`⚡ 214ms`), target scooter code, device ID, and ACK status (`✔ ACK 00 / OK` vs `✖ FAILED`).
+     - Expandable raw JSON disclosure to inspect underlying CommandRecord payload, sequence ID, and server timestamps.
+     - Included "Export JSON" function to download the complete audit trail and "Clear" function for session resets.
+  4. **Fleet Health Diagnostics Bar & Smart Filters:**
+     - Created a fleet health overview strip displaying: (a) Online Fleet Connectivity percentage bar, (b) Average and minimum battery percentages, (c) GPS satellite fix ratio, and (d) Hardware lock/unlock distribution.
+     - Added specialized filter tabs: `All`, `Online`, `Alerts`, `Low Batt` (< 25%), and `No GPS` (awaiting satellite lock).
+     - Added three tabbed views to the side panel: `Diagnostics` (hardware specs and direct "Center on Map" trigger), `Audit Log` (with live counter badge), and `Alerts` (connection loss and battery warnings).
+  5. **Production Build & Auto-Deployment:**
+     - Verified clean compilation with zero linting or bundling errors (`npm run build`).
+     - As this update affects only the frontend `admin-web`, it deploys directly to Vercel without requiring any VPS commands or downtime.
+
 For every future significant action, update current architecture/status/configuration/dependencies/file history/objectives, preserve historical decisions/problems/session entries, append a Session History entry, and refresh this final Resume Context before ending the session.

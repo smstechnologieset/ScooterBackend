@@ -816,6 +816,746 @@ dd {
   border-color: rgba(228, 63, 90, 0.3);
 }
 
+/* ==========================================================================
+   Fleet Map View Styles
+   ========================================================================== */
+
+.view-segments {
+  display: flex;
+  padding: 4px;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  gap: 2px;
+}
+
+.view-segments button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 13px;
+  color: var(--secondary);
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  font-weight: 700;
+  font-size: 13px;
+  transition: all 0.15s ease;
+}
+
+.view-segments button:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.view-segments button.active {
+  color: #06100b;
+  background: var(--green);
+}
+
+.fleet-workspace-main {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+.fleet-map-container {
+  position: relative;
+  width: 100%;
+  height: 420px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  transition: height 0.25s ease;
+}
+
+.fleet-map-container.view-map-expanded {
+  height: min(720px, calc(100vh - 280px));
+}
+
+#fleet-map {
+  width: 100%;
+  height: 100%;
+}
+
+/* Map Header Controls Overlay */
+.map-overlay-top {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  right: 14px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  pointer-events: none;
+  z-index: 5;
+}
+
+.map-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  background: rgba(18, 21, 20, 0.88);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+  backdrop-filter: blur(10px);
+  font-size: 12px;
+  font-weight: 700;
+  color: #ffffff;
+  pointer-events: auto;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+.map-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--green);
+  box-shadow: 0 0 8px var(--green);
+}
+
+.map-actions-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  pointer-events: auto;
+}
+
+.map-control-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #ffffff;
+  background: rgba(26, 31, 29, 0.92);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  backdrop-filter: blur(8px);
+  transition: all 0.15s ease;
+}
+
+.map-control-btn:hover {
+  background: var(--surface-raised);
+  border-color: var(--green);
+  color: var(--green);
+}
+
+/* GPS Pending Floating Drawer */
+.map-pending-drawer {
+  position: absolute;
+  bottom: 12px;
+  left: 12px;
+  right: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 14px;
+  background: rgba(18, 21, 20, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  backdrop-filter: blur(10px);
+  font-size: 12px;
+  color: var(--secondary);
+  z-index: 5;
+}
+
+.map-pending-drawer strong {
+  color: #ffc93c;
+  margin-right: 6px;
+}
+
+/* Custom Mapbox Markers */
+.scooter-map-marker {
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  user-select: none;
+  transition: transform 0.18s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.scooter-map-marker:hover {
+  transform: scale(1.15);
+  z-index: 20 !important;
+}
+
+.scooter-map-marker.selected {
+  transform: scale(1.22);
+  z-index: 25 !important;
+}
+
+.marker-pin {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  background: #121815;
+  border: 2px solid var(--green);
+  border-radius: 20px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6), 0 0 10px rgba(36, 212, 126, 0.35);
+  font-size: 11px;
+  font-weight: 800;
+  color: #ffffff;
+  white-space: nowrap;
+}
+
+.scooter-map-marker.offline .marker-pin {
+  border-color: #64748b;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.6);
+  color: #94a3b8;
+}
+
+.scooter-map-marker.low-battery .marker-pin {
+  border-color: #f59e0b;
+}
+
+.marker-icon {
+  font-size: 13px;
+  line-height: 1;
+}
+
+.marker-battery {
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--green);
+}
+
+.scooter-map-marker.offline .marker-battery {
+  color: #94a3b8;
+}
+
+.marker-arrow {
+  width: 0;
+  height: 0;
+  border-left: 6px solid transparent;
+  border-right: 6px solid transparent;
+  border-top: 7px solid var(--green);
+  margin-top: -1px;
+}
+
+.scooter-map-marker.offline .marker-arrow {
+  border-top-color: #64748b;
+}
+
+.marker-label {
+  margin-top: 3px;
+  padding: 2px 6px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  color: #ffffff;
+  background: rgba(0, 0, 0, 0.75);
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
+/* Pulsing radar effect on online scooters */
+.marker-pulse-ring {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 44px;
+  height: 44px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  border: 2px solid var(--green);
+  opacity: 0;
+  pointer-events: none;
+  animation: marker-pulse-anim 2s infinite ease-out;
+}
+
+@keyframes marker-pulse-anim {
+  0% {
+    width: 20px;
+    height: 20px;
+    opacity: 0.9;
+  }
+  100% {
+    width: 54px;
+    height: 54px;
+    opacity: 0;
+  }
+}
+
+/* Mapbox Popup Styling Overrides */
+.mapboxgl-popup-content {
+  padding: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  border-radius: 12px !important;
+}
+
+.mapboxgl-popup-tip {
+  border-top-color: #1a1f1d !important;
+  border-bottom-color: #1a1f1d !important;
+}
+
+.map-popup-card {
+  width: 260px;
+  background: rgba(22, 27, 25, 0.96);
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(12px);
+  overflow: hidden;
+  color: #ffffff;
+}
+
+.map-popup-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.04);
+  border-bottom: 1px solid var(--border);
+}
+
+.map-popup-header strong {
+  font-size: 14px;
+  color: var(--green);
+}
+
+.map-popup-header small {
+  display: block;
+  font-size: 11px;
+  color: var(--secondary);
+}
+
+.map-popup-body {
+  padding: 12px 14px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.map-popup-stat span {
+  display: block;
+  font-size: 11px;
+  color: var(--secondary);
+}
+
+.map-popup-stat strong {
+  font-size: 13px;
+  color: var(--text);
+}
+
+.map-popup-footer {
+  display: flex;
+  gap: 8px;
+  padding: 10px 14px 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.map-popup-btn {
+  flex: 1;
+  padding: 6px 10px;
+  font-size: 11px;
+  font-weight: 800;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.06);
+  color: #ffffff;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.map-popup-btn:hover {
+  background: var(--green);
+  color: #06100b;
+  border-color: var(--green);
+}
+
+/* ==========================================================================
+   Fleet Health Diagnostics Bar
+   ========================================================================== */
+
+.fleet-health-bar {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  max-width: 1440px;
+  margin: 0 auto 16px auto;
+  padding: 12px 18px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.health-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.health-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.health-value {
+  font-size: 14px;
+  font-weight: 700;
+  color: #ffffff;
+}
+
+.health-meter-wrap {
+  width: 100%;
+  height: 5px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 3px;
+  overflow: hidden;
+  margin-top: 2px;
+}
+
+.health-meter-bar {
+  height: 100%;
+  background: var(--green);
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+.text-danger {
+  color: var(--danger) !important;
+}
+
+.text-warning {
+  color: var(--warning) !important;
+}
+
+.text-success {
+  color: var(--green) !important;
+}
+
+.text-accent {
+  color: #00d2ff !important;
+}
+
+/* ==========================================================================
+   Side Panel Tabs & Command Audit Log
+   ========================================================================== */
+
+.side-panel-tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 8px;
+}
+
+.side-panel-tab {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 8px 8px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--secondary);
+  font-size: 11px;
+  font-weight: 700;
+  transition: all 0.15s ease;
+}
+
+.side-panel-tab:hover {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.side-panel-tab.active {
+  background: var(--surface-raised);
+  color: var(--green);
+  border-color: var(--border-strong);
+}
+
+.side-tab-badge {
+  padding: 1px 6px;
+  font-size: 10px;
+  font-weight: 800;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text);
+}
+
+.side-panel-tab.active .side-tab-badge {
+  background: rgba(36, 212, 126, 0.2);
+  color: var(--green);
+}
+
+.audit-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.audit-panel-header h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.audit-header-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.audit-btn {
+  padding: 4px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--secondary);
+  transition: all 0.15s ease;
+}
+
+.audit-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+}
+
+.audit-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 520px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.audit-card {
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  transition: border-color 0.15s ease;
+}
+
+.audit-card:hover {
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.audit-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.audit-badge {
+  padding: 2px 6px;
+  font-size: 10px;
+  font-weight: 800;
+  border-radius: 4px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.audit-badge.open {
+  background: rgba(36, 212, 126, 0.2);
+  color: var(--green);
+  border: 1px solid rgba(36, 212, 126, 0.4);
+}
+
+.audit-badge.lock {
+  background: rgba(255, 201, 60, 0.2);
+  color: var(--warning);
+  border: 1px solid rgba(255, 201, 60, 0.4);
+}
+
+.audit-badge.records,
+.audit-badge.ccid,
+.audit-badge.update {
+  background: rgba(0, 210, 255, 0.2);
+  color: #00d2ff;
+  border: 1px solid rgba(0, 210, 255, 0.4);
+}
+
+.audit-latency {
+  font-size: 10px;
+  font-family: monospace;
+  color: var(--secondary);
+}
+
+.audit-card-target {
+  font-size: 13px;
+  font-weight: 700;
+  color: #ffffff;
+}
+
+.audit-card-target small {
+  font-weight: 400;
+  color: var(--secondary);
+  margin-left: 6px;
+  font-size: 11px;
+}
+
+.audit-card-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.audit-status {
+  font-weight: 600;
+}
+
+.audit-status.acknowledged {
+  color: var(--green);
+}
+
+.audit-status.failed {
+  color: var(--danger);
+}
+
+.audit-raw-details {
+  margin-top: 8px;
+  padding-top: 6px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.audit-raw-details summary {
+  font-size: 11px;
+  color: var(--secondary);
+  cursor: pointer;
+}
+
+.audit-raw-details pre {
+  margin: 6px 0 0;
+  padding: 6px;
+  background: rgba(0, 0, 0, 0.4);
+  border-radius: 4px;
+  font-size: 10px;
+  font-family: monospace;
+  overflow-x: auto;
+  color: #a6aaa8;
+}
+
+/* ==========================================================================
+   Kigali Parking Stations & Geofences Markers
+   ========================================================================== */
+
+.parking-station-marker {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  cursor: pointer;
+  z-index: 5;
+}
+
+.station-pin {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  background: #0090e7;
+  border: 2px solid #ffffff;
+  border-radius: 50%;
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 900;
+  box-shadow: 0 4px 12px rgba(0, 144, 231, 0.5);
+  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.parking-station-marker:hover .station-pin {
+  transform: scale(1.15);
+}
+
+.station-pulse-ring {
+  position: absolute;
+  top: -6px;
+  left: -6px;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 2px solid rgba(0, 168, 255, 0.6);
+  animation: station-pulse 2.2s infinite ease-out;
+  pointer-events: none;
+}
+
+@keyframes station-pulse {
+  0% {
+    transform: scale(0.6);
+    opacity: 0.9;
+  }
+  100% {
+    transform: scale(1.6);
+    opacity: 0;
+  }
+}
+
+.station-label {
+  margin-top: 4px;
+  padding: 2px 6px;
+  background: rgba(10, 14, 12, 0.9);
+  border: 1px solid rgba(0, 168, 255, 0.4);
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  color: #00d2ff;
+  white-space: nowrap;
+}
+
+.status-badge-cyan {
+  padding: 2px 8px;
+  font-size: 10px;
+  font-weight: 800;
+  color: #00d2ff;
+  background: rgba(0, 210, 255, 0.14);
+  border: 1px solid rgba(0, 210, 255, 0.4);
+  border-radius: 12px;
+}
+
+.map-control-btn.active {
+  background: rgba(0, 210, 255, 0.2) !important;
+  border-color: #00d2ff !important;
+  color: #00d2ff !important;
+}
+
+.btn-focus-map {
+  width: 100%;
+  margin-bottom: 12px;
+  padding: 8px 12px;
+  background: rgba(36, 212, 126, 0.1);
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  color: var(--green);
+  font-size: 12px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: all 0.15s ease;
+}
+
+.btn-focus-map:hover {
+  background: var(--green);
+  color: #06100b;
+}
+
 @media (max-width: 980px) {
   .shell {
     padding: 16px;

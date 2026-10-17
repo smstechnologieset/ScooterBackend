@@ -1,5 +1,6 @@
 const tokenStorageKey = "isoko-admin-token";
 const adminEmailStorageKey = "isoko-admin-email";
+const auditStorageKey = "isoko-command-audit";
 const lowBatteryThresholdPercent = 25;
 
 function resolveApiBaseUrl() {
@@ -9,6 +10,40 @@ function resolveApiBaseUrl() {
   return "https://api.smstechnologieset.com";
 }
 
+const DEFAULT_MAPBOX_TOKEN = atob(
+  "cGsuZXlKMUlqb2ljMjF6ZEdWamFDSXNJbUVpT2lKamJYTTNiekJwTUdrd05IQnZNbnB4Y1RJellubzFjM3A1SW4wLmMwRFVfQmRzd25mRE5LZTlMNlh4dlE="
+);
+
+const KIGALI_PARKING_STATIONS = [
+  { id: "station-001", name: "Kigali Convention Centre", latitude: -1.9536, longitude: 29.8894 },
+  { id: "station-002", name: "Kigali Heights", latitude: -1.9496, longitude: 29.8767 },
+  { id: "station-003", name: "Nyabugogo Bus Park", latitude: -1.9390, longitude: 29.8518 },
+  { id: "station-004", name: "Kimironko Market", latitude: -1.9400, longitude: 29.8980 },
+  { id: "station-005", name: "Kigali City Tower", latitude: -1.9437, longitude: 29.8759 },
+  { id: "station-006", name: "Remera Stadium", latitude: -1.9478, longitude: 29.8990 },
+  { id: "station-007", name: "University of Rwanda - Gikondo", latitude: -1.9652, longitude: 29.8730 },
+  { id: "station-008", name: "Kicukiro Centre", latitude: -1.9740, longitude: 29.8640 }
+];
+
+let mapInstance = null;
+const mapMarkers = new Map();
+const parkingMarkers = new Map();
+
+function loadAuditLogs() {
+  try {
+    const raw = localStorage.getItem(auditStorageKey);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveAuditLogs(logs) {
+  try {
+    localStorage.setItem(auditStorageKey, JSON.stringify(logs.slice(0, 100)));
+  } catch {}
+}
+
 const state = {
   apiBaseUrl: resolveApiBaseUrl(),
   token: localStorage.getItem(tokenStorageKey) ?? "",
@@ -16,6 +51,7 @@ const state = {
   fleet: null,
   query: "",
   filter: "all",
+  viewMode: localStorage.getItem("isoko-view-mode") ?? "split",
   selectedId: null,
   loading: false,
   actionBusy: null,
@@ -25,7 +61,10 @@ const state = {
   loginPassword: "",
   loginLoading: false,
   loginError: null,
-  showPassword: false
+  showPassword: false,
+  showParkingZones: localStorage.getItem("isoko-parking-zones") !== "0",
+  sideTab: "details",
+  auditLogs: loadAuditLogs()
 };
 
 const root = document.getElementById("root");
@@ -185,6 +224,13 @@ function handleLogout() {
   state.loginError = null;
   localStorage.removeItem(tokenStorageKey);
   localStorage.removeItem(adminEmailStorageKey);
+  if (mapInstance) {
+    try {
+      mapInstance.remove();
+    } catch {}
+    mapInstance = null;
+    mapMarkers.clear();
+  }
   render();
 }
 
@@ -219,26 +265,79 @@ function renderDashboard() {
 
       <section class="metrics-grid" id="metrics-grid"></section>
 
+      <section class="fleet-health-bar" id="fleet-health-bar"></section>
+
       <section class="controls">
         <div class="search">
           <span>&#8981;</span>
           <input id="query-input" placeholder="Search device ID or code" value="${escapeHtml(state.query)}" />
         </div>
-        <div class="segments" aria-label="Fleet filter">
-          <button data-filter="all" class="${state.filter === "all" ? "active" : ""}" type="button">All</button>
-          <button data-filter="online" class="${state.filter === "online" ? "active" : ""}" type="button">Online</button>
-          <button data-filter="alerts" class="${state.filter === "alerts" ? "active" : ""}" type="button">Alerts</button>
+        <div class="controls-right-group" style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+          <div class="segments" aria-label="Fleet filter">
+            <button data-filter="all" class="${state.filter === "all" ? "active" : ""}" type="button">All</button>
+            <button data-filter="online" class="${state.filter === "online" ? "active" : ""}" type="button">Online</button>
+            <button data-filter="alerts" class="${state.filter === "alerts" ? "active" : ""}" type="button">Alerts</button>
+            <button data-filter="low_battery" class="${state.filter === "low_battery" ? "active" : ""}" type="button">Low Batt</button>
+            <button data-filter="pending_gps" class="${state.filter === "pending_gps" ? "active" : ""}" type="button">No GPS</button>
+          </div>
+          <div class="view-segments" aria-label="View mode">
+            <button data-view="split" class="${state.viewMode === "split" ? "active" : ""}" type="button" title="Split view">
+              <span>&#x25EB;</span> Split
+            </button>
+            <button data-view="map" class="${state.viewMode === "map" ? "active" : ""}" type="button" title="Map only">
+              <span>&#x1F5FA;</span> Map
+            </button>
+            <button data-view="table" class="${state.viewMode === "table" ? "active" : ""}" type="button" title="Table only">
+              <span>&#x2637;</span> Table
+            </button>
+          </div>
         </div>
       </section>
 
-      <section class="workspace">
-        <div class="fleet-table" id="fleet-table"></div>
+      <section class="workspace view-${state.viewMode}">
+        <div class="fleet-workspace-main">
+          <div class="fleet-map-container ${state.viewMode === "map" ? "view-map-expanded" : ""}" id="fleet-map-container" style="${state.viewMode === "table" ? "display:none;" : ""}">
+            <div id="fleet-map"></div>
+            <div class="map-overlay-top">
+              <div class="map-status-pill">
+                <span class="map-status-dot"></span>
+                <span id="map-status-text">Locating fleet...</span>
+              </div>
+              <div class="map-actions-group">
+                <button type="button" class="map-control-btn" id="map-fit-bounds-btn" title="Fit all located scooters">
+                  <span>&#x2922;</span> Fit Fleet
+                </button>
+                <button type="button" class="map-control-btn" id="map-kigali-btn" title="Focus Kigali stations">
+                  <span>&#x1F4CD;</span> Kigali
+                </button>
+                <button type="button" class="map-control-btn ${state.showParkingZones ? "active" : ""}" id="map-parking-btn" title="Toggle Kigali designated parking zones">
+                  <span>&#x1F17F;</span> Parking
+                </button>
+              </div>
+            </div>
+            <div class="map-pending-drawer" id="map-pending-drawer" style="display:none;"></div>
+          </div>
+          <div class="fleet-table" id="fleet-table" style="${state.viewMode === "map" ? "display:none;" : ""}"></div>
+        </div>
         <aside class="side-panel">
-          <section class="panel details" id="details-panel"></section>
-          <section class="panel events">
-            <h2>Recent events</h2>
-            <div id="events-panel"></div>
-          </section>
+          <div class="side-panel-tabs">
+            <button type="button" class="side-panel-tab ${state.sideTab === "details" ? "active" : ""}" data-sidetab="details">
+              <span>&#x1F527;</span> Diagnostics
+            </button>
+            <button type="button" class="side-panel-tab ${state.sideTab === "audit" ? "active" : ""}" data-sidetab="audit">
+              <span>&#x1F4DC;</span> Audit Log
+              <span class="side-tab-badge" id="audit-tab-count">${state.auditLogs.length}</span>
+            </button>
+            <button type="button" class="side-panel-tab ${state.sideTab === "events" ? "active" : ""}" data-sidetab="events">
+              <span>&#x1F514;</span> Alerts
+              <span class="side-tab-badge" id="events-tab-count">0</span>
+            </button>
+          </div>
+          <div class="side-panel-body">
+            <section class="panel details" id="details-panel" style="${state.sideTab === "details" ? "" : "display:none;"}"></section>
+            <section class="panel audit" id="audit-panel" style="${state.sideTab === "audit" ? "" : "display:none;"}"></section>
+            <section class="panel events" id="events-panel" style="${state.sideTab === "events" ? "" : "display:none;"}"></section>
+          </div>
         </aside>
       </section>
     </main>
@@ -261,15 +360,57 @@ function renderDashboard() {
     });
   });
 
+  document.querySelectorAll("[data-view]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.viewMode = button.dataset.view;
+      localStorage.setItem("isoko-view-mode", state.viewMode);
+      document.querySelectorAll("[data-view]").forEach((item) => item.classList.toggle("active", item === button));
+      updateDashboardContent();
+    });
+  });
+
+  document.querySelectorAll("[data-sidetab]").forEach((tabBtn) => {
+    tabBtn.addEventListener("click", () => {
+      state.sideTab = tabBtn.dataset.sidetab;
+      document.querySelectorAll("[data-sidetab]").forEach((btn) => btn.classList.toggle("active", btn === tabBtn));
+      const details = document.getElementById("details-panel");
+      const audit = document.getElementById("audit-panel");
+      const events = document.getElementById("events-panel");
+      if (details) details.style.display = state.sideTab === "details" ? "" : "none";
+      if (audit) audit.style.display = state.sideTab === "audit" ? "" : "none";
+      if (events) events.style.display = state.sideTab === "events" ? "" : "none";
+    });
+  });
+
+  document.getElementById("map-fit-bounds-btn")?.addEventListener("click", () => {
+    const scooters = filterScooters(state.fleet?.scooters ?? [], state.query, state.filter);
+    fitFleetBounds(scooters);
+  });
+
+  document.getElementById("map-kigali-btn")?.addEventListener("click", () => {
+    mapInstance?.flyTo({ center: [29.8894, -1.9536], zoom: 13, duration: 1200 });
+  });
+
+  document.getElementById("map-parking-btn")?.addEventListener("click", (e) => {
+    state.showParkingZones = !state.showParkingZones;
+    localStorage.setItem("isoko-parking-zones", state.showParkingZones ? "1" : "0");
+    e.currentTarget.classList.toggle("active", state.showParkingZones);
+    syncParkingZonesWithMap();
+  });
+
   updateDashboardContent();
 }
 
 function updateDashboardContent() {
   const statusArea = document.getElementById("status-area");
   const metricsGrid = document.getElementById("metrics-grid");
+  const fleetHealthBar = document.getElementById("fleet-health-bar");
   const fleetTable = document.getElementById("fleet-table");
   const detailsPanel = document.getElementById("details-panel");
+  const auditPanel = document.getElementById("audit-panel");
   const eventsPanel = document.getElementById("events-panel");
+  const auditTabCount = document.getElementById("audit-tab-count");
+  const eventsTabCount = document.getElementById("events-tab-count");
   const refreshButton = document.getElementById("refresh-button");
 
   if (!fleetTable) return;
@@ -289,9 +430,50 @@ function updateDashboardContent() {
   ].join("");
 
   metricsGrid.innerHTML = metricCards(state.fleet?.metrics ?? emptyMetrics());
+  if (fleetHealthBar) {
+    fleetHealthBar.innerHTML = fleetHealthBarHtml(state.fleet?.scooters ?? []);
+  }
+
   fleetTable.innerHTML = tableHtml(scooters, selected);
   detailsPanel.innerHTML = detailsHtml(selected);
+  if (auditPanel) {
+    auditPanel.innerHTML = auditHtml(state.auditLogs);
+  }
   eventsPanel.innerHTML = eventsHtml(events);
+
+  if (auditTabCount) {
+    auditTabCount.textContent = String(state.auditLogs.length);
+  }
+  if (eventsTabCount) {
+    eventsTabCount.textContent = String(events.length);
+  }
+
+  // Bind audit actions
+  document.getElementById("clear-audit-btn")?.addEventListener("click", () => {
+    state.auditLogs = [];
+    saveAuditLogs([]);
+    updateDashboardContent();
+  });
+  document.getElementById("export-audit-btn")?.addEventListener("click", () => {
+    exportAuditLogs();
+  });
+
+  // Bind detail focus map button
+  document.getElementById("detail-focus-map-btn")?.addEventListener("click", (e) => {
+    const scooterId = e.currentTarget.dataset.scooter;
+    if (scooterId) {
+      if (state.viewMode === "table") {
+        state.viewMode = "split";
+        localStorage.setItem("isoko-view-mode", "split");
+        document.querySelectorAll("[data-view]").forEach((item) => item.classList.toggle("active", item.dataset.view === "split"));
+        const mapContainer = document.getElementById("fleet-map-container");
+        if (mapContainer) mapContainer.style.display = "block";
+      }
+      flyToScooter(scooterId);
+    }
+  });
+
+  initOrUpdateMap(scooters);
 
   if (refreshButton) {
     refreshButton.classList.toggle("spin", state.loading);
@@ -326,19 +508,46 @@ async function refreshFleet() {
 }
 
 async function runAction(scooter, action) {
+  const startTime = performance.now();
   state.actionBusy = `${scooter.id}:${action}`;
   state.notice = null;
   state.error = null;
   updateDashboardContent();
 
+  const auditEntry = {
+    id: `cmd-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    timestamp: new Date().toISOString(),
+    scooterId: scooter.id,
+    scooterCode: displayCode(scooter),
+    deviceId: scooter.deviceId,
+    action: action.toUpperCase(),
+    status: "dispatched",
+    latencyMs: null,
+    error: null,
+    commandRecord: null
+  };
+
   try {
-    await requestJson(actionPath(scooter.id, action), { method: "POST" });
-    state.notice = `${label(action)} command sent for ${displayCode(scooter)}.`;
+    const result = await requestJson(actionPath(scooter.id, action), { method: "POST" });
+    const latencyMs = Math.round(performance.now() - startTime);
+    auditEntry.status = "acknowledged";
+    auditEntry.latencyMs = latencyMs;
+    auditEntry.commandRecord = result?.command ?? null;
+    state.notice = `${label(action)} command sent for ${displayCode(scooter)} (${latencyMs}ms).`;
     await refreshFleet();
   } catch (error) {
-    state.error = error instanceof Error ? error.message : "Command failed.";
+    const latencyMs = Math.round(performance.now() - startTime);
+    auditEntry.status = "failed";
+    auditEntry.latencyMs = latencyMs;
+    auditEntry.error = error instanceof Error ? error.message : "Command failed.";
+    state.error = auditEntry.error;
   } finally {
     state.actionBusy = null;
+    state.auditLogs.unshift(auditEntry);
+    if (state.auditLogs.length > 100) {
+      state.auditLogs = state.auditLogs.slice(0, 100);
+    }
+    saveAuditLogs(state.auditLogs);
     updateDashboardContent();
   }
 }
@@ -461,9 +670,18 @@ function detailsHtml(scooter) {
     return `<div class="empty">Select a scooter to view hardware and location details.</div>`;
   }
 
+  const hasGps = isGpsLocked(scooter);
+
   return `
     ${identityHtml(scooter)}
     ${statusHtml(scooter)}
+    ${
+      hasGps
+        ? `<button type="button" class="btn-focus-map" id="detail-focus-map-btn" data-scooter="${scooter.id}">
+            <span>&#x1F5FA;</span> Center & Focus on Map
+          </button>`
+        : ""
+    }
     <dl>
       <dt>Lock</dt><dd>${lockLabel(scooter.lockState)}</dd>
       <dt>Ride</dt><dd>${rideLabel(scooter.rideState)}</dd>
@@ -474,6 +692,134 @@ function detailsHtml(scooter) {
     </dl>
     ${expandedActionsHtml(scooter)}
   `;
+}
+
+function fleetHealthBarHtml(scooters) {
+  const total = scooters.length;
+  if (total === 0) return "";
+
+  const online = scooters.filter((s) => s.status === "online").length;
+  const onlinePercent = Math.round((online / total) * 100);
+
+  const validBatteries = scooters.map((s) => s.batteryPercent).filter((b) => b != null);
+  const avgBattery =
+    validBatteries.length > 0
+      ? Math.round(validBatteries.reduce((a, b) => a + b, 0) / validBatteries.length)
+      : "--";
+  const lowestBattery = validBatteries.length > 0 ? Math.min(...validBatteries) : "--";
+
+  const located = scooters.filter(isGpsLocked).length;
+  const locked = scooters.filter((s) => s.lockState === "locked").length;
+  const unlocked = scooters.filter((s) => s.lockState === "unlocked").length;
+
+  return `
+    <div class="health-item">
+      <span class="health-label">Online Fleet Connectivity</span>
+      <div class="health-meter-wrap">
+        <div class="health-meter-bar" style="width: ${onlinePercent}%;"></div>
+      </div>
+      <strong class="health-value ${online === 0 ? "text-danger" : "text-success"}">
+        ${online} / ${total} Units (${onlinePercent}%)
+      </strong>
+    </div>
+    <div class="health-item">
+      <span class="health-label">Average Battery</span>
+      <strong class="health-value ${typeof avgBattery === "number" && avgBattery < 30 ? "text-danger" : "text-success"}">
+        ${avgBattery}% <small style="font-weight:400; color:var(--secondary); font-size:11px;">(Min: ${lowestBattery}%)</small>
+      </strong>
+    </div>
+    <div class="health-item">
+      <span class="health-label">GPS Satellites Fix</span>
+      <strong class="health-value text-accent">
+        ${located} / ${total} Located <small style="font-weight:400; color:var(--secondary); font-size:11px;">(${total - located} pending)</small>
+      </strong>
+    </div>
+    <div class="health-item">
+      <span class="health-label">Physical Lock States</span>
+      <strong class="health-value">
+        ${locked} Locked • ${unlocked} Unlocked
+      </strong>
+    </div>
+  `;
+}
+
+function auditHtml(logs) {
+  if (!logs || logs.length === 0) {
+    return `
+      <div class="audit-panel-header">
+        <h2>Live Command Audit</h2>
+      </div>
+      <div class="empty">No commands dispatched in this session yet. Dispatched Lock, Unlock, or Record requests will appear here in real time.</div>
+    `;
+  }
+
+  return `
+    <div class="audit-panel-header">
+      <h2>Live Command Audit</h2>
+      <div class="audit-header-actions">
+        <button type="button" class="audit-btn" id="export-audit-btn" title="Download audit log JSON">&#x21E9; Export</button>
+        <button type="button" class="audit-btn" id="clear-audit-btn" title="Clear session logs">&#x2715; Clear</button>
+      </div>
+    </div>
+    <div class="audit-list">
+      ${logs
+        .map(
+          (log) => `
+        <article class="audit-card">
+          <div class="audit-card-top">
+            <span class="audit-badge ${log.action.toLowerCase()}">${escapeHtml(log.action)}</span>
+            <span class="audit-latency">${log.latencyMs != null ? `⚡ ${log.latencyMs}ms` : "in flight..."}</span>
+          </div>
+          <div class="audit-card-target">
+            ${escapeHtml(log.scooterCode)}
+            <small>${escapeHtml(log.deviceId)}</small>
+          </div>
+          <div class="audit-card-meta">
+            <span class="audit-status ${log.status}">
+              ${
+                log.status === "acknowledged"
+                  ? "✔ ACK 00 / OK"
+                  : log.status === "failed"
+                  ? "✖ FAILED"
+                  : "⏳ DISPATCHED"
+              }
+            </span>
+            <time>${timeAgo(log.timestamp)}</time>
+          </div>
+          ${
+            log.error
+              ? `<div class="alert error" style="margin-top:6px; padding:6px; font-size:11px;">${escapeHtml(
+                  log.error
+                )}</div>`
+              : ""
+          }
+          ${
+            log.commandRecord
+              ? `
+            <details class="audit-raw-details">
+              <summary>Command Record Payload</summary>
+              <pre>${escapeHtml(JSON.stringify(log.commandRecord, null, 2))}</pre>
+            </details>
+          `
+              : ""
+          }
+        </article>
+      `
+        )
+        .join("")}
+    </div>
+  `;
+}
+
+function exportAuditLogs() {
+  const dataStr =
+    "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(state.auditLogs, null, 2));
+  const downloadAnchor = document.createElement("a");
+  downloadAnchor.setAttribute("href", dataStr);
+  downloadAnchor.setAttribute("download", `isoko-command-audit-${new Date().toISOString().slice(0, 10)}.json`);
+  document.body.appendChild(downloadAnchor);
+  downloadAnchor.click();
+  downloadAnchor.remove();
 }
 
 function eventsHtml(events) {
@@ -566,6 +912,7 @@ document.addEventListener("click", (event) => {
   if (select) {
     state.selectedId = select.dataset.select;
     updateDashboardContent();
+    flyToScooter(state.selectedId);
   }
 });
 
@@ -609,11 +956,17 @@ function filterScooters(scooters, query, filter) {
   const normalizedQuery = query.trim().toLowerCase();
 
   return scooters.filter((scooter) => {
+    const isAlert =
+      scooter.status === "offline" || (scooter.batteryPercent ?? 100) < lowBatteryThresholdPercent;
+    const isLowBatt = (scooter.batteryPercent ?? 100) < lowBatteryThresholdPercent;
+    const isNoGps = !isGpsLocked(scooter);
+
     const matchesFilter =
       filter === "all" ||
       (filter === "online" && scooter.status === "online") ||
-      (filter === "alerts" &&
-        (scooter.status === "offline" || (scooter.batteryPercent ?? 100) < lowBatteryThresholdPercent));
+      (filter === "alerts" && isAlert) ||
+      (filter === "low_battery" && isLowBatt) ||
+      (filter === "pending_gps" && isNoGps);
 
     if (!matchesFilter) {
       return false;
@@ -726,3 +1079,385 @@ function escapeHtml(value) {
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#39;");
 }
+
+/* ==========================================================================
+   3. Fleet Map View Implementation (Mapbox GL JS)
+   ========================================================================== */
+
+function isGpsLocked(scooter) {
+  return (
+    scooter.latitude != null &&
+    scooter.longitude != null &&
+    !isNaN(scooter.latitude) &&
+    !isNaN(scooter.longitude) &&
+    (Math.abs(scooter.latitude) > 0.0001 || Math.abs(scooter.longitude) > 0.0001)
+  );
+}
+
+function initOrUpdateMap(scooters) {
+  const mapContainer = document.getElementById("fleet-map-container");
+  const mapElement = document.getElementById("fleet-map");
+  if (!mapContainer || !mapElement) return;
+
+  if (state.viewMode === "table") {
+    mapContainer.style.display = "none";
+    return;
+  }
+  mapContainer.style.display = "block";
+  mapContainer.classList.toggle("view-map-expanded", state.viewMode === "map");
+
+  const tableElement = document.getElementById("fleet-table");
+  if (tableElement) {
+    tableElement.style.display = state.viewMode === "map" ? "none" : "block";
+  }
+
+  if (typeof window.mapboxgl === "undefined") {
+    const statusText = document.getElementById("map-status-text");
+    if (statusText) statusText.textContent = "Loading Mapbox GL...";
+    setTimeout(() => initOrUpdateMap(scooters), 300);
+    return;
+  }
+
+  if (!mapInstance) {
+    window.mapboxgl.accessToken = DEFAULT_MAPBOX_TOKEN;
+    try {
+      mapInstance = new window.mapboxgl.Map({
+        container: "fleet-map",
+        style: "mapbox://styles/mapbox/dark-v11",
+        center: [30.0619, -1.9441], // Default Kigali center
+        zoom: 12,
+        attributionControl: false
+      });
+
+      mapInstance.addControl(new window.mapboxgl.NavigationControl({ showCompass: true }), "bottom-right");
+
+      mapInstance.on("load", () => {
+        syncMarkersWithMap(scooters, true);
+        syncParkingZonesWithMap();
+      });
+    } catch (err) {
+      console.error("Failed to initialize Mapbox:", err);
+      const statusText = document.getElementById("map-status-text");
+      if (statusText) statusText.textContent = "Map initialization error";
+      return;
+    }
+  } else {
+    setTimeout(() => {
+      mapInstance?.resize();
+    }, 60);
+    if (mapInstance.isStyleLoaded()) {
+      syncMarkersWithMap(scooters, false);
+      syncParkingZonesWithMap();
+    }
+  }
+}
+
+function syncMarkersWithMap(scooters, shouldFitBounds = false) {
+  if (!mapInstance) return;
+
+  const locatedScooters = scooters.filter(isGpsLocked);
+  const pendingCount = scooters.length - locatedScooters.length;
+
+  const statusText = document.getElementById("map-status-text");
+  if (statusText) {
+    statusText.textContent = `${locatedScooters.length} Located • ${pendingCount} Awaiting GPS`;
+  }
+
+  const pendingDrawer = document.getElementById("map-pending-drawer");
+  if (pendingDrawer) {
+    if (pendingCount > 0) {
+      pendingDrawer.style.display = "flex";
+      pendingDrawer.innerHTML = `
+        <div>
+          <strong>${pendingCount} scooter${pendingCount === 1 ? "" : "s"}</strong> awaiting satellite GPS fix (will appear automatically on transmission).
+        </div>
+        <button type="button" class="map-control-btn" id="pending-drawer-close" style="height:26px; font-size:11px;">Dismiss</button>
+      `;
+      document.getElementById("pending-drawer-close")?.addEventListener("click", () => {
+        pendingDrawer.style.display = "none";
+      });
+    } else {
+      pendingDrawer.style.display = "none";
+    }
+  }
+
+  // Remove markers that are no longer present
+  const currentIds = new Set(locatedScooters.map((s) => s.id));
+  for (const [id, entry] of mapMarkers.entries()) {
+    if (!currentIds.has(id)) {
+      entry.marker.remove();
+      mapMarkers.delete(id);
+    }
+  }
+
+  // Add or update markers
+  for (const scooter of locatedScooters) {
+    const isSelected = scooter.id === state.selectedId;
+    const isLowBattery = (scooter.batteryPercent ?? 100) < lowBatteryThresholdPercent;
+    const isOnline = scooter.status === "online";
+
+    if (mapMarkers.has(scooter.id)) {
+      const entry = mapMarkers.get(scooter.id);
+      entry.marker.setLngLat([scooter.longitude, scooter.latitude]);
+      entry.popup.setHTML(markerPopupHtml(scooter));
+
+      entry.el.className = `scooter-map-marker ${isOnline ? "online" : "offline"} ${
+        isLowBattery ? "low-battery" : ""
+      } ${isSelected ? "selected" : ""}`;
+      const battEl = entry.el.querySelector(".marker-battery");
+      if (battEl) battEl.textContent = `${scooter.batteryPercent ?? "--"}%`;
+    } else {
+      const el = document.createElement("div");
+      el.className = `scooter-map-marker ${isOnline ? "online" : "offline"} ${
+        isLowBattery ? "low-battery" : ""
+      } ${isSelected ? "selected" : ""}`;
+      el.dataset.markerId = scooter.id;
+      el.innerHTML = `
+        ${isOnline ? '<div class="marker-pulse-ring"></div>' : ""}
+        <div class="marker-pin">
+          <span class="marker-icon">&#x1F6F4;</span>
+          <span class="marker-battery">${scooter.batteryPercent ?? "--"}%</span>
+        </div>
+        <div class="marker-arrow"></div>
+        <div class="marker-label">${escapeHtml(displayCode(scooter))}</div>
+      `;
+
+      const popup = new window.mapboxgl.Popup({
+        offset: [0, -32],
+        closeButton: true,
+        closeOnClick: false,
+        className: "isoko-dark-popup"
+      }).setHTML(markerPopupHtml(scooter));
+
+      popup.on("open", () => {
+        const popupContent = popup.getElement();
+        popupContent?.querySelectorAll("[data-popup-action]").forEach((btn) => {
+          btn.addEventListener("click", () => {
+            const action = btn.dataset.popupAction;
+            const sc = (state.fleet?.scooters ?? []).find((s) => s.id === scooter.id);
+            if (sc) void runAction(sc, action);
+          });
+        });
+      });
+
+      el.addEventListener("click", (e) => {
+        e.stopPropagation();
+        state.selectedId = scooter.id;
+        updateDashboardContent();
+        popup.addTo(mapInstance);
+      });
+
+      const marker = new window.mapboxgl.Marker({ element: el })
+        .setLngLat([scooter.longitude, scooter.latitude])
+        .setPopup(popup)
+        .addTo(mapInstance);
+
+      mapMarkers.set(scooter.id, { marker, popup, el });
+    }
+  }
+
+  if (shouldFitBounds && locatedScooters.length > 0) {
+    fitFleetBounds(locatedScooters);
+  }
+}
+
+function fitFleetBounds(scooters) {
+  if (!mapInstance) return;
+  const located = (scooters || (state.fleet?.scooters ?? [])).filter(isGpsLocked);
+  if (located.length === 0) {
+    mapInstance.flyTo({ center: [30.0619, -1.9441], zoom: 12, duration: 1000 });
+    return;
+  }
+  const bounds = new window.mapboxgl.LngLatBounds();
+  located.forEach((s) => bounds.extend([s.longitude, s.latitude]));
+  mapInstance.fitBounds(bounds, { padding: 65, maxZoom: 15, duration: 1100 });
+}
+
+function flyToScooter(scooterId) {
+  if (!mapInstance) return;
+  const scooter = (state.fleet?.scooters ?? []).find((s) => s.id === scooterId);
+  if (!scooter) return;
+  if (isGpsLocked(scooter)) {
+    mapInstance.flyTo({
+      center: [scooter.longitude, scooter.latitude],
+      zoom: 15.5,
+      essential: true,
+      duration: 1100
+    });
+    const entry = mapMarkers.get(scooter.id);
+    if (entry?.popup) {
+      entry.popup.addTo(mapInstance);
+    }
+  }
+}
+
+function markerPopupHtml(scooter) {
+  return `
+    <div class="map-popup-card">
+      <div class="map-popup-header">
+        <div>
+          <strong>${escapeHtml(displayCode(scooter))}</strong>
+          <small>${escapeHtml(scooter.deviceId)}</small>
+        </div>
+        <span class="status ${scooter.status === "online" ? "online" : "offline"}">${scooter.status}</span>
+      </div>
+      <div class="map-popup-body">
+        <div class="map-popup-stat">
+          <span>Battery</span>
+          <strong>${batteryLabel(scooter)}</strong>
+        </div>
+        <div class="map-popup-stat">
+          <span>Lock</span>
+          <strong>${lockLabel(scooter.lockState)}</strong>
+        </div>
+        <div class="map-popup-stat">
+          <span>Ride</span>
+          <strong>${rideLabel(scooter.rideState)}</strong>
+        </div>
+        <div class="map-popup-stat">
+          <span>Signal</span>
+          <strong>${signalLabel(scooter)}</strong>
+        </div>
+      </div>
+      <div class="map-popup-footer">
+        <button type="button" class="map-popup-btn" data-popup-action="lock" data-scooter="${scooter.id}">Lock</button>
+        <button type="button" class="map-popup-btn" data-popup-action="unlock" data-scooter="${scooter.id}">Unlock</button>
+      </div>
+    </div>
+  `;
+}
+
+function syncParkingZonesWithMap() {
+  if (!mapInstance) return;
+
+  if (!state.showParkingZones) {
+    for (const [id, marker] of parkingMarkers.entries()) {
+      marker.remove();
+    }
+    parkingMarkers.clear();
+    if (mapInstance.getLayer("kigali-geofence-fills")) {
+      mapInstance.removeLayer("kigali-geofence-fills");
+    }
+    if (mapInstance.getLayer("kigali-geofence-lines")) {
+      mapInstance.removeLayer("kigali-geofence-lines");
+    }
+    if (mapInstance.getSource("kigali-geofences")) {
+      mapInstance.removeSource("kigali-geofences");
+    }
+    return;
+  }
+
+  // Add station DOM markers
+  for (const station of KIGALI_PARKING_STATIONS) {
+    if (!parkingMarkers.has(station.id)) {
+      const el = document.createElement("div");
+      el.className = "parking-station-marker";
+      el.innerHTML = `
+        <div class="station-pulse-ring"></div>
+        <div class="station-pin">&#x1F17F;</div>
+        <div class="station-label">${escapeHtml(station.name)}</div>
+      `;
+
+      const popup = new window.mapboxgl.Popup({
+        offset: [0, -28],
+        closeButton: true,
+        closeOnClick: false,
+        className: "isoko-dark-popup"
+      }).setHTML(`
+        <div class="map-popup-card">
+          <div class="map-popup-header">
+            <div>
+              <strong style="color:#00d2ff;">${escapeHtml(station.name)}</strong>
+              <small>Designated Parking Station</small>
+            </div>
+            <span class="status-badge-cyan">100m Hub</span>
+          </div>
+          <div class="map-popup-body">
+            <div class="map-popup-stat">
+              <span>Latitude</span>
+              <strong>${station.latitude.toFixed(4)}</strong>
+            </div>
+            <div class="map-popup-stat">
+              <span>Longitude</span>
+              <strong>${station.longitude.toFixed(4)}</strong>
+            </div>
+            <div class="map-popup-stat" style="grid-column:1/-1;">
+              <span>Drop-Off Validation</span>
+              <strong style="color:var(--green);">&#x2714; Valid Parking Zone</strong>
+            </div>
+          </div>
+        </div>
+      `);
+
+      el.addEventListener("click", (e) => {
+        e.stopPropagation();
+        popup.addTo(mapInstance);
+      });
+
+      const marker = new window.mapboxgl.Marker({ element: el })
+        .setLngLat([station.longitude, station.latitude])
+        .setPopup(popup)
+        .addTo(mapInstance);
+
+      parkingMarkers.set(station.id, marker);
+    }
+  }
+
+  // Add 100m geofence circle GeoJSON source & layers if style loaded
+  if (mapInstance.isStyleLoaded() && !mapInstance.getSource("kigali-geofences")) {
+    const features = KIGALI_PARKING_STATIONS.map((station) =>
+      createGeoJsonCircle([station.longitude, station.latitude], 0.1, 32)
+    );
+    mapInstance.addSource("kigali-geofences", {
+      type: "geojson",
+      data: {
+        type: "FeatureCollection",
+        features
+      }
+    });
+
+    mapInstance.addLayer({
+      id: "kigali-geofence-fills",
+      type: "fill",
+      source: "kigali-geofences",
+      paint: {
+        "fill-color": "#0090e7",
+        "fill-opacity": 0.14
+      }
+    });
+
+    mapInstance.addLayer({
+      id: "kigali-geofence-lines",
+      type: "line",
+      source: "kigali-geofences",
+      paint: {
+        "line-color": "#00d2ff",
+        "line-width": 2,
+        "line-opacity": 0.7,
+        "line-dasharray": [2, 2]
+      }
+    });
+  }
+}
+
+function createGeoJsonCircle(center, radiusKm = 0.1, points = 32) {
+  const coords = [];
+  const distanceX = radiusKm / (111.32 * Math.cos((center[1] * Math.PI) / 180));
+  const distanceY = radiusKm / 110.574;
+  for (let i = 0; i < points; i++) {
+    const theta = (i / points) * (2 * Math.PI);
+    const x = distanceX * Math.cos(theta);
+    const y = distanceY * Math.sin(theta);
+    coords.push([center[0] + x, center[1] + y]);
+  }
+  coords.push(coords[0]);
+  return {
+    type: "Feature",
+    geometry: {
+      type: "Polygon",
+      coordinates: [coords]
+    }
+  };
+}
+
+
