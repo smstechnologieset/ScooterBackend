@@ -28,6 +28,7 @@ const KIGALI_PARKING_STATIONS = [
 let mapInstance = null;
 const mapMarkers = new Map();
 const parkingMarkers = new Map();
+let geofenceCenterMarker = null;
 
 function loadAuditLogs() {
   try {
@@ -66,13 +67,33 @@ const state = {
   sideTab: "details",
   auditLogs: loadAuditLogs(),
   theme: localStorage.getItem("isoko-admin-theme") ?? "dark",
-  geofence: {
-    enabled: localStorage.getItem("isoko-geofence-enabled") !== "0",
-    autoLock: localStorage.getItem("isoko-geofence-autolock") !== "0",
-    centerLat: parseFloat(localStorage.getItem("isoko-geofence-lat") ?? "-1.9441"),
-    centerLng: parseFloat(localStorage.getItem("isoko-geofence-lng") ?? "30.0619"),
-    radiusKm: parseFloat(localStorage.getItem("isoko-geofence-radius") ?? "12.0")
-  },
+  geofence: (() => {
+    // Migration v2: ensure valid coordinates and default to enabled
+    if (localStorage.getItem("isoko-geofence-v2") !== "1") {
+      localStorage.setItem("isoko-geofence-v2", "1");
+      localStorage.setItem("isoko-geofence-enabled", "1");
+      localStorage.setItem("isoko-geofence-lng", "29.8894");
+      localStorage.setItem("isoko-geofence-lat", "-1.9536");
+      localStorage.setItem("isoko-geofence-radius", "6.0");
+    }
+    let savedLng = parseFloat(localStorage.getItem("isoko-geofence-lng") ?? "29.8894");
+    if (isNaN(savedLng) || savedLng > 29.98 || savedLng < 29.7) {
+      savedLng = 29.8894;
+      localStorage.setItem("isoko-geofence-lng", "29.8894");
+    }
+    let savedLat = parseFloat(localStorage.getItem("isoko-geofence-lat") ?? "-1.9536");
+    if (isNaN(savedLat) || savedLat > -1.85 || savedLat < -2.05) {
+      savedLat = -1.9536;
+      localStorage.setItem("isoko-geofence-lat", "-1.9536");
+    }
+    return {
+      enabled: localStorage.getItem("isoko-geofence-enabled") !== "0",
+      autoLock: localStorage.getItem("isoko-geofence-autolock") !== "0",
+      centerLat: savedLat,
+      centerLng: savedLng,
+      radiusKm: parseFloat(localStorage.getItem("isoko-geofence-radius") ?? "6.0")
+    };
+  })(),
   breachedBikeIds: new Set(),
   activeBreachAlert: null,
   geofenceModalOpen: false
@@ -353,8 +374,11 @@ function renderDashboard() {
                 <button type="button" class="map-control-btn ${state.showParkingZones ? "active" : ""}" id="map-parking-btn" title="Toggle Kigali designated parking zones">
                   <span>&#x1F17F;</span> Parking
                 </button>
-                <button type="button" class="map-control-btn ${state.geofence.enabled ? "active" : ""}" id="map-geofence-btn" title="Configure Authorized Operational Geofence">
+                <button type="button" class="map-control-btn ${state.geofence.enabled ? "active geofence" : ""}" id="map-geofence-toggle-btn" title="Toggle Geofence operational boundary">
                   <span>&#x1F6E1;</span> Geofence (${state.geofence.radiusKm}km)
+                </button>
+                <button type="button" class="map-control-btn icon-only" id="map-geofence-settings-btn" title="Configure Geofence radius and auto-lock">
+                  <span>&#x2699;</span>
                 </button>
               </div>
             </div>
@@ -408,7 +432,19 @@ function renderDashboard() {
     updateDashboardContent();
   });
 
-  document.getElementById("map-geofence-btn")?.addEventListener("click", () => {
+  document.getElementById("map-geofence-toggle-btn")?.addEventListener("click", () => {
+    state.geofence.enabled = !state.geofence.enabled;
+    localStorage.setItem("isoko-geofence-enabled", state.geofence.enabled ? "1" : "0");
+    const toggleBtn = document.getElementById("map-geofence-toggle-btn");
+    if (toggleBtn) {
+      toggleBtn.classList.toggle("active", state.geofence.enabled);
+      toggleBtn.classList.toggle("geofence", state.geofence.enabled);
+    }
+    syncGeofenceWithMap();
+    checkGeofenceBreaches(state.fleet?.scooters ?? []);
+  });
+
+  document.getElementById("map-geofence-settings-btn")?.addEventListener("click", () => {
     state.geofenceModalOpen = true;
     updateGeofenceSlots();
   });
@@ -525,10 +561,11 @@ function updateGeofenceSlots() {
     }
   }
 
-  const geofenceBtn = document.getElementById("map-geofence-btn");
-  if (geofenceBtn) {
-    geofenceBtn.innerHTML = `<span>&#x1F6E1;</span> Geofence (${state.geofence.radiusKm}km)`;
-    geofenceBtn.classList.toggle("active", state.geofence.enabled);
+  const geofenceToggleBtn = document.getElementById("map-geofence-toggle-btn");
+  if (geofenceToggleBtn) {
+    geofenceToggleBtn.innerHTML = `<span>&#x1F6E1;</span> Geofence (${state.geofence.radiusKm}km)`;
+    geofenceToggleBtn.classList.toggle("active", state.geofence.enabled);
+    geofenceToggleBtn.classList.toggle("geofence", state.geofence.enabled);
   }
 }
 
@@ -553,13 +590,22 @@ function attachGeofenceModalListeners() {
   const radiusSlider = document.getElementById("geofence-radius-slider");
   const radiusDisplay = document.getElementById("geofence-radius-val");
   radiusSlider?.addEventListener("input", (e) => {
-    if (radiusDisplay) radiusDisplay.textContent = `${e.target.value} km`;
+    const val = parseFloat(e.target.value);
+    if (radiusDisplay) radiusDisplay.textContent = `${val} km`;
+    state.geofence.radiusKm = val;
+    state.geofence.enabled = true;
+    const toggleBtn = document.getElementById("map-geofence-toggle-btn");
+    if (toggleBtn) {
+      toggleBtn.innerHTML = `<span>&#x1F6E1;</span> Geofence (${val}km)`;
+      toggleBtn.classList.add("active", "geofence");
+    }
+    syncGeofenceWithMap();
   });
 
   document.getElementById("geofence-save-btn")?.addEventListener("click", () => {
     const enabled = document.getElementById("geofence-enabled-toggle")?.checked ?? true;
     const autoLock = document.getElementById("geofence-autolock-toggle")?.checked ?? true;
-    const radius = parseFloat(radiusSlider?.value ?? "12.0");
+    const radius = parseFloat(radiusSlider?.value ?? "6.0");
 
     state.geofence.enabled = enabled;
     state.geofence.autoLock = autoLock;
@@ -648,6 +694,7 @@ function updateDashboardContent() {
     }
   });
 
+  updateGeofenceSlots();
   initOrUpdateMap(scooters);
 
   if (refreshButton) {
@@ -1318,8 +1365,8 @@ function initOrUpdateMap(scooters) {
       mapInstance = new window.mapboxgl.Map({
         container: "fleet-map",
         style: initialStyle,
-        center: [30.0619, -1.9441], // Default Kigali center
-        zoom: 12,
+        center: [29.8894, -1.9536], // Kigali Operations center
+        zoom: 12.5,
         attributionControl: false
       });
 
@@ -1465,7 +1512,7 @@ function fitFleetBounds(scooters) {
   if (!mapInstance) return;
   const located = (scooters || (state.fleet?.scooters ?? [])).filter(isGpsLocked);
   if (located.length === 0) {
-    mapInstance.flyTo({ center: [30.0619, -1.9441], zoom: 12, duration: 1000 });
+    mapInstance.flyTo({ center: [29.8894, -1.9536], zoom: 12.5, duration: 1000 });
     return;
   }
   const bounds = new window.mapboxgl.LngLatBounds();
@@ -1744,14 +1791,21 @@ function syncGeofenceWithMap() {
   }
 
   if (!state.geofence.enabled) {
-    if (mapInstance.getLayer("operational-geofence-fill")) {
-      mapInstance.removeLayer("operational-geofence-fill");
+    if (mapInstance.getLayer("operational-geofence-line-glow")) {
+      mapInstance.removeLayer("operational-geofence-line-glow");
     }
     if (mapInstance.getLayer("operational-geofence-line")) {
       mapInstance.removeLayer("operational-geofence-line");
     }
+    if (mapInstance.getLayer("operational-geofence-fill")) {
+      mapInstance.removeLayer("operational-geofence-fill");
+    }
     if (mapInstance.getSource("operational-geofence")) {
       mapInstance.removeSource("operational-geofence");
+    }
+    if (geofenceCenterMarker) {
+      geofenceCenterMarker.remove();
+      geofenceCenterMarker = null;
     }
     return;
   }
@@ -1776,28 +1830,71 @@ function syncGeofenceWithMap() {
         features: [circleFeature]
       }
     });
+  }
 
+  // Soft emerald polygon fill
+  if (!mapInstance.getLayer("operational-geofence-fill")) {
     mapInstance.addLayer({
       id: "operational-geofence-fill",
       type: "fill",
       source: "operational-geofence",
       paint: {
-        "fill-color": "#24d47e",
-        "fill-opacity": 0.08
+        "fill-color": "#10b981",
+        "fill-opacity": 0.12
       }
     });
+  } else {
+    mapInstance.setPaintProperty("operational-geofence-fill", "fill-opacity", 0.12);
+    mapInstance.setPaintProperty("operational-geofence-fill", "fill-color", "#10b981");
+  }
 
+  // High-contrast outer line halo/glow
+  if (!mapInstance.getLayer("operational-geofence-line-glow")) {
+    mapInstance.addLayer({
+      id: "operational-geofence-line-glow",
+      type: "line",
+      source: "operational-geofence",
+      paint: {
+        "line-color": state.theme === "light" ? "#047857" : "#059669",
+        "line-width": 6,
+        "line-opacity": 0.35
+      }
+    });
+  }
+
+  // Sharp crisp perimeter line
+  if (!mapInstance.getLayer("operational-geofence-line")) {
     mapInstance.addLayer({
       id: "operational-geofence-line",
       type: "line",
       source: "operational-geofence",
       paint: {
-        "line-color": "#24d47e",
-        "line-width": 2,
-        "line-opacity": 0.85,
-        "line-dasharray": [4, 2]
+        "line-color": "#10b981",
+        "line-width": 3,
+        "line-opacity": 0.95,
+        "line-dasharray": [3, 2]
       }
     });
+  } else {
+    mapInstance.setPaintProperty("operational-geofence-line", "line-color", "#10b981");
+    mapInstance.setPaintProperty("operational-geofence-line", "line-width", 3);
+    mapInstance.setPaintProperty("operational-geofence-line", "line-opacity", 0.95);
+  }
+
+  // Update center marker pin
+  if (!geofenceCenterMarker) {
+    const el = document.createElement("div");
+    el.className = "geofence-center-marker";
+    el.innerHTML = `<span>&#x1F6E1;</span> <strong>Geofence Hub</strong> <small>(${state.geofence.radiusKm}km)</small>`;
+    geofenceCenterMarker = new window.mapboxgl.Marker({ element: el })
+      .setLngLat([state.geofence.centerLng, state.geofence.centerLat])
+      .addTo(mapInstance);
+  } else {
+    geofenceCenterMarker.setLngLat([state.geofence.centerLng, state.geofence.centerLat]);
+    const el = geofenceCenterMarker.getElement();
+    if (el) {
+      el.innerHTML = `<span>&#x1F6E1;</span> <strong>Geofence Hub</strong> <small>(${state.geofence.radiusKm}km)</small>`;
+    }
   }
 }
 

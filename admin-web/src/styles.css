@@ -2313,6 +2313,62 @@ dd {
   color: #00d2ff !important;
 }
 
+.map-control-btn.active.geofence {
+  background: rgba(16, 185, 129, 0.2) !important;
+  border-color: #10b981 !important;
+  color: #059669 !important;
+  font-weight: 700;
+}
+
+[data-theme="light"] .map-control-btn.active.geofence {
+  background: #10b981 !important;
+  border-color: #059669 !important;
+  color: #ffffff !important;
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.35) !important;
+}
+
+[data-theme="dark"] .map-control-btn.active.geofence {
+  background: rgba(36, 212, 126, 0.25) !important;
+  border-color: #24d47e !important;
+  color: #24d47e !important;
+  box-shadow: 0 0 12px rgba(36, 212, 126, 0.35) !important;
+}
+
+.map-control-btn.icon-only {
+  width: 32px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.geofence-center-marker {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  background: #10b981;
+  color: #ffffff;
+  border: 2px solid #ffffff;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 800;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35), 0 0 12px rgba(16, 185, 129, 0.5);
+  pointer-events: none;
+  white-space: nowrap;
+  transform: translate(-50%, -50%);
+}
+
+.geofence-center-marker span {
+  font-size: 13px;
+}
+
+.geofence-center-marker small {
+  font-size: 10px;
+  opacity: 0.9;
+  font-weight: 600;
+}
+
 .btn-focus-map {
   width: 100%;
   margin-bottom: 12px;
