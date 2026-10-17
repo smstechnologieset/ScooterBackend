@@ -141,7 +141,7 @@ describe("Rider Routes", () => {
     expect(body.scooter.simCcid).toBeUndefined();
   });
 
-  it("returns 401 when no rider token provided", async () => {
+  it("allows guest riders to discover available scooters without a token", async () => {
     const mockRepo: Partial<DeviceRepository> = {
       listScooters: vi.fn().mockResolvedValue([])
     };
@@ -170,6 +170,8 @@ describe("Rider Routes", () => {
       url: "/rider/scooters"
     });
 
-    expect(response.statusCode).toBe(401);
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    expect(body.scooters).toEqual([]);
   });
 });

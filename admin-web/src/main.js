@@ -266,8 +266,16 @@ function handleLogout() {
    ========================================================================== */
 
 function renderDashboard() {
+  const existingShell = document.getElementById("dashboard-shell");
+  if (existingShell) {
+    updateGeofenceSlots();
+    updateThemeToggleUI();
+    updateDashboardContent();
+    return;
+  }
+
   root.innerHTML = `
-    <main class="shell">
+    <main class="shell" id="dashboard-shell">
       <header class="topbar">
         <div class="brand">
           <div class="brand-mark"><img src="/src/assets/logo.png" alt="ISOKO" /></div>
@@ -291,25 +299,7 @@ function renderDashboard() {
         </div>
       </header>
 
-      ${
-        state.activeBreachAlert
-          ? `
-        <div class="geofence-alert-banner">
-          <div class="geofence-alert-content">
-            <span class="geofence-alert-icon">&#x1F6A8;</span>
-            <div>
-              <strong>SECURITY GEOFENCE BREACH:</strong>
-              <span>${escapeHtml(state.activeBreachAlert.message)}</span>
-            </div>
-          </div>
-          <div class="geofence-alert-actions">
-            <button type="button" class="geofence-alert-btn" id="geofence-lock-all-btn">Lock Breached Unit</button>
-            <button type="button" class="geofence-alert-btn" id="geofence-dismiss-btn">&#x2715; Dismiss</button>
-          </div>
-        </div>
-      `
-          : ""
-      }
+      <div id="geofence-alert-slot"></div>
 
       <div id="status-area"></div>
 
@@ -394,7 +384,7 @@ function renderDashboard() {
         </aside>
       </section>
 
-      ${state.geofenceModalOpen ? geofenceModalHtml() : ""}
+      <div id="geofence-modal-slot"></div>
     </main>
   `;
 
@@ -402,10 +392,12 @@ function renderDashboard() {
     state.theme = state.theme === "light" ? "dark" : "light";
     localStorage.setItem("isoko-admin-theme", state.theme);
     document.documentElement.setAttribute("data-theme", state.theme);
+    updateThemeToggleUI();
+
     if (mapInstance) {
-      mapInstance.setStyle(
-        state.theme === "light" ? "mapbox://styles/mapbox/light-v11" : "mapbox://styles/mapbox/dark-v11"
-      );
+      const nextStyle =
+        state.theme === "light" ? "mapbox://styles/mapbox/light-v11" : "mapbox://styles/mapbox/dark-v11";
+      mapInstance.setStyle(nextStyle);
       mapInstance.once("style.load", () => {
         const bikes = filterScooters(state.fleet?.scooters ?? [], state.query, state.filter);
         syncMarkersWithMap(bikes, false);
@@ -413,72 +405,15 @@ function renderDashboard() {
         syncGeofenceWithMap();
       });
     }
-    renderDashboard();
-  });
-
-  document.getElementById("geofence-lock-all-btn")?.addEventListener("click", () => {
-    if (state.activeBreachAlert?.bikeId) {
-      const bike = (state.fleet?.scooters ?? []).find((s) => s.id === state.activeBreachAlert.bikeId);
-      if (bike) void runAction(bike, "lock");
-    }
-    state.activeBreachAlert = null;
-    renderDashboard();
-  });
-
-  document.getElementById("geofence-dismiss-btn")?.addEventListener("click", () => {
-    state.activeBreachAlert = null;
-    renderDashboard();
+    updateDashboardContent();
   });
 
   document.getElementById("map-geofence-btn")?.addEventListener("click", () => {
     state.geofenceModalOpen = true;
-    renderDashboard();
+    updateGeofenceSlots();
   });
 
-  // Modal event listeners
-  if (state.geofenceModalOpen) {
-    document.getElementById("geofence-modal-close")?.addEventListener("click", () => {
-      state.geofenceModalOpen = false;
-      renderDashboard();
-    });
-
-    document.getElementById("geofence-modal-cancel")?.addEventListener("click", () => {
-      state.geofenceModalOpen = false;
-      renderDashboard();
-    });
-
-    document.getElementById("geofence-modal-backdrop")?.addEventListener("click", (e) => {
-      if (e.target.id === "geofence-modal-backdrop") {
-        state.geofenceModalOpen = false;
-        renderDashboard();
-      }
-    });
-
-    const radiusSlider = document.getElementById("geofence-radius-slider");
-    const radiusDisplay = document.getElementById("geofence-radius-val");
-    radiusSlider?.addEventListener("input", (e) => {
-      if (radiusDisplay) radiusDisplay.textContent = `${e.target.value} km`;
-    });
-
-    document.getElementById("geofence-save-btn")?.addEventListener("click", () => {
-      const enabled = document.getElementById("geofence-enabled-toggle")?.checked ?? true;
-      const autoLock = document.getElementById("geofence-autolock-toggle")?.checked ?? true;
-      const radius = parseFloat(radiusSlider?.value ?? "12.0");
-
-      state.geofence.enabled = enabled;
-      state.geofence.autoLock = autoLock;
-      state.geofence.radiusKm = radius;
-
-      localStorage.setItem("isoko-geofence-enabled", enabled ? "1" : "0");
-      localStorage.setItem("isoko-geofence-autolock", autoLock ? "1" : "0");
-      localStorage.setItem("isoko-geofence-radius", String(radius));
-
-      state.geofenceModalOpen = false;
-      syncGeofenceWithMap();
-      checkGeofenceBreaches(state.fleet?.scooters ?? []);
-      renderDashboard();
-    });
-  }
+  updateGeofenceSlots();
 
   document.getElementById("refresh-button")?.addEventListener("click", () => void refreshFleet());
   document.getElementById("logout-button")?.addEventListener("click", handleLogout);
@@ -536,6 +471,109 @@ function renderDashboard() {
   });
 
   updateDashboardContent();
+}
+
+function updateThemeToggleUI() {
+  const themeToggle = document.getElementById("theme-toggle-btn");
+  if (themeToggle) {
+    themeToggle.innerHTML = `<span>${state.theme === "light" ? "🌙" : "☀️"}</span>`;
+    themeToggle.title = `Switch to ${state.theme === "light" ? "Dark" : "Light"} Mode`;
+  }
+}
+
+function updateGeofenceSlots() {
+  const alertSlot = document.getElementById("geofence-alert-slot");
+  if (alertSlot) {
+    alertSlot.innerHTML = state.activeBreachAlert
+      ? `
+      <div class="geofence-alert-banner">
+        <div class="geofence-alert-content">
+          <span class="geofence-alert-icon">&#x1F6A8;</span>
+          <div>
+            <strong>SECURITY GEOFENCE BREACH:</strong>
+            <span>${escapeHtml(state.activeBreachAlert.message)}</span>
+          </div>
+        </div>
+        <div class="geofence-alert-actions">
+          <button type="button" class="geofence-alert-btn" id="geofence-lock-all-btn">Lock Breached Unit</button>
+          <button type="button" class="geofence-alert-btn" id="geofence-dismiss-btn">&#x2715; Dismiss</button>
+        </div>
+      </div>
+    `
+      : "";
+
+    document.getElementById("geofence-lock-all-btn")?.addEventListener("click", () => {
+      if (state.activeBreachAlert?.bikeId) {
+        const bike = (state.fleet?.scooters ?? []).find((s) => s.id === state.activeBreachAlert.bikeId);
+        if (bike) void runAction(bike, "lock");
+      }
+      state.activeBreachAlert = null;
+      updateGeofenceSlots();
+    });
+
+    document.getElementById("geofence-dismiss-btn")?.addEventListener("click", () => {
+      state.activeBreachAlert = null;
+      updateGeofenceSlots();
+    });
+  }
+
+  const modalSlot = document.getElementById("geofence-modal-slot");
+  if (modalSlot) {
+    modalSlot.innerHTML = state.geofenceModalOpen ? geofenceModalHtml() : "";
+    if (state.geofenceModalOpen) {
+      attachGeofenceModalListeners();
+    }
+  }
+
+  const geofenceBtn = document.getElementById("map-geofence-btn");
+  if (geofenceBtn) {
+    geofenceBtn.innerHTML = `<span>&#x1F6E1;</span> Geofence (${state.geofence.radiusKm}km)`;
+    geofenceBtn.classList.toggle("active", state.geofence.enabled);
+  }
+}
+
+function attachGeofenceModalListeners() {
+  document.getElementById("geofence-modal-close")?.addEventListener("click", () => {
+    state.geofenceModalOpen = false;
+    updateGeofenceSlots();
+  });
+
+  document.getElementById("geofence-modal-cancel")?.addEventListener("click", () => {
+    state.geofenceModalOpen = false;
+    updateGeofenceSlots();
+  });
+
+  document.getElementById("geofence-modal-backdrop")?.addEventListener("click", (e) => {
+    if (e.target.id === "geofence-modal-backdrop") {
+      state.geofenceModalOpen = false;
+      updateGeofenceSlots();
+    }
+  });
+
+  const radiusSlider = document.getElementById("geofence-radius-slider");
+  const radiusDisplay = document.getElementById("geofence-radius-val");
+  radiusSlider?.addEventListener("input", (e) => {
+    if (radiusDisplay) radiusDisplay.textContent = `${e.target.value} km`;
+  });
+
+  document.getElementById("geofence-save-btn")?.addEventListener("click", () => {
+    const enabled = document.getElementById("geofence-enabled-toggle")?.checked ?? true;
+    const autoLock = document.getElementById("geofence-autolock-toggle")?.checked ?? true;
+    const radius = parseFloat(radiusSlider?.value ?? "12.0");
+
+    state.geofence.enabled = enabled;
+    state.geofence.autoLock = autoLock;
+    state.geofence.radiusKm = radius;
+
+    localStorage.setItem("isoko-geofence-enabled", enabled ? "1" : "0");
+    localStorage.setItem("isoko-geofence-autolock", autoLock ? "1" : "0");
+    localStorage.setItem("isoko-geofence-radius", String(radius));
+
+    state.geofenceModalOpen = false;
+    updateGeofenceSlots();
+    syncGeofenceWithMap();
+    checkGeofenceBreaches(state.fleet?.scooters ?? []);
+  });
 }
 
 function updateDashboardContent() {
@@ -1256,12 +1294,33 @@ function initOrUpdateMap(scooters) {
     return;
   }
 
+  const mapElement = document.getElementById("fleet-map");
+  if (!mapElement) return;
+
+  // Verify mapInstance is attached to the current active DOM element
+  if (mapInstance) {
+    let isAttached = false;
+    try {
+      isAttached = mapInstance.getContainer() === mapElement && document.body.contains(mapElement);
+    } catch {}
+    if (!isAttached) {
+      try {
+        mapInstance.remove();
+      } catch {}
+      mapInstance = null;
+      mapMarkers.clear();
+      parkingMarkers.clear();
+    }
+  }
+
   if (!mapInstance) {
     window.mapboxgl.accessToken = DEFAULT_MAPBOX_TOKEN;
+    const initialStyle =
+      state.theme === "light" ? "mapbox://styles/mapbox/light-v11" : "mapbox://styles/mapbox/dark-v11";
     try {
       mapInstance = new window.mapboxgl.Map({
         container: "fleet-map",
-        style: "mapbox://styles/mapbox/dark-v11",
+        style: initialStyle,
         center: [30.0619, -1.9441], // Default Kigali center
         zoom: 12,
         attributionControl: false
@@ -1476,6 +1535,10 @@ function markerPopupHtml(scooter) {
 
 function syncParkingZonesWithMap() {
   if (!mapInstance) return;
+  if (!mapInstance.isStyleLoaded()) {
+    mapInstance.once("style.load", () => syncParkingZonesWithMap());
+    return;
+  }
 
   if (!state.showParkingZones) {
     for (const [id, marker] of parkingMarkers.entries()) {
@@ -1677,7 +1740,11 @@ function geofenceModalHtml() {
 }
 
 function syncGeofenceWithMap() {
-  if (!mapInstance || !mapInstance.isStyleLoaded()) return;
+  if (!mapInstance) return;
+  if (!mapInstance.isStyleLoaded()) {
+    mapInstance.once("style.load", () => syncGeofenceWithMap());
+    return;
+  }
 
   if (!state.geofence.enabled) {
     if (mapInstance.getLayer("operational-geofence-fill")) {

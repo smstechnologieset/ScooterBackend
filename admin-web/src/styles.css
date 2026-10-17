@@ -30,7 +30,7 @@
   --surface-raised: #f1f5f9;
   --card: #ffffff;
   --card-soft: #f8fafc;
-  --border: rgba(0, 0, 0, 0.1);
+  --border: #e2e8f0;
   --border-strong: rgba(16, 152, 91, 0.4);
   --text: #0f172a;
   --secondary: #475569;
@@ -42,11 +42,297 @@
 
 [data-theme="light"] body {
   background:
-    radial-gradient(circle at 20% 0%, rgba(36, 212, 126, 0.12), transparent 28%),
-    linear-gradient(180deg, #f1f5f9 0%, #f8fafc 38%, #f8fafc 100%);
+    radial-gradient(circle at 20% 0%, rgba(36, 212, 126, 0.08), transparent 28%),
+    linear-gradient(180deg, #f1f5f9 0%, #f8fafc 40%, #ffffff 100%);
   color: var(--text);
 }
 
+/* Header & Navigation in Light Mode */
+[data-theme="light"] .topbar {
+  background: rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid #e2e8f0;
+}
+
+[data-theme="light"] .brand h1 {
+  color: #0f172a;
+}
+
+[data-theme="light"] .brand p {
+  color: #64748b;
+}
+
+[data-theme="light"] .admin-session-badge {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  color: #334155;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+[data-theme="light"] .icon-button {
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  color: #10985b;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+[data-theme="light"] .icon-button:hover {
+  background: #f1f5f9;
+  border-color: #94a3b8;
+  color: #059669;
+}
+
+[data-theme="light"] .sign-out-btn {
+  background: #fee2e2;
+  border: 1px solid #fca5a5;
+  color: #b91c1c;
+}
+
+[data-theme="light"] .sign-out-btn:hover {
+  background: #fecaca;
+  color: #991b1b;
+}
+
+/* Metric Stat Cards in Light Mode */
+[data-theme="light"] .metric {
+  background: #ffffff !important;
+  border: 1px solid #e2e8f0 !important;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.04) !important;
+}
+
+[data-theme="light"] .metric strong {
+  color: #0f172a !important;
+}
+
+[data-theme="light"] .metric span {
+  color: #475569 !important;
+}
+
+[data-theme="light"] .metric small {
+  color: #64748b !important;
+}
+
+[data-theme="light"] .metric-icon {
+  background: rgba(36, 212, 126, 0.14) !important;
+  color: #10985b !important;
+  border: 1px solid rgba(36, 212, 126, 0.25) !important;
+}
+
+/* Fleet Health Diagnostics Bar */
+[data-theme="light"] .fleet-health-bar {
+  background: #ffffff !important;
+  border: 1px solid #e2e8f0 !important;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.04) !important;
+}
+
+[data-theme="light"] .health-item span:first-child {
+  color: #64748b !important;
+}
+
+[data-theme="light"] .health-val {
+  color: #0f172a !important;
+}
+
+[data-theme="light"] .health-bar-track {
+  background: #e2e8f0 !important;
+}
+
+[data-theme="light"] .health-item-pill {
+  background: #f1f5f9 !important;
+  color: #475569 !important;
+  border: 1px solid #e2e8f0 !important;
+}
+
+/* Status Notifications & Banners */
+[data-theme="light"] .alert {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+[data-theme="light"] .alert.success {
+  background: #ecfdf5 !important;
+  color: #065f46 !important;
+  border: 1px solid #a7f3d0 !important;
+}
+
+[data-theme="light"] .alert.error {
+  background: #fef2f2 !important;
+  color: #991b1b !important;
+  border: 1px solid #fecaca !important;
+}
+
+/* Side Panel Tabs */
+[data-theme="light"] .side-panel-tabs {
+  border-bottom: 1px solid #e2e8f0 !important;
+}
+
+[data-theme="light"] .side-panel-tab {
+  color: #64748b !important;
+}
+
+[data-theme="light"] .side-panel-tab:hover {
+  color: #0f172a !important;
+  background: rgba(0, 0, 0, 0.04) !important;
+}
+
+[data-theme="light"] .side-panel-tab.active {
+  background: #ffffff !important;
+  color: #10985b !important;
+  border-color: #cbd5e1 !important;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06) !important;
+}
+
+[data-theme="light"] .side-tab-badge {
+  background: #e2e8f0 !important;
+  color: #475569 !important;
+}
+
+[data-theme="light"] .side-panel-tab.active .side-tab-badge {
+  background: rgba(36, 212, 126, 0.2) !important;
+  color: #10985b !important;
+}
+
+/* Right Side Panels & Hardware Details */
+[data-theme="light"] .panel {
+  background: #ffffff !important;
+  border: 1px solid #e2e8f0 !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04) !important;
+}
+
+[data-theme="light"] .identity strong {
+  color: #0f172a !important;
+}
+
+[data-theme="light"] .identity span {
+  color: #64748b !important;
+}
+
+[data-theme="light"] dl dt {
+  color: #64748b !important;
+}
+
+[data-theme="light"] dl dd {
+  color: #0f172a !important;
+}
+
+/* Badges */
+[data-theme="light"] .status.online,
+[data-theme="light"] .badge.online {
+  background: #ecfdf5 !important;
+  color: #065f46 !important;
+  border: 1px solid #a7f3d0 !important;
+}
+
+[data-theme="light"] .status.offline,
+[data-theme="light"] .badge.offline {
+  background: #fef2f2 !important;
+  color: #991b1b !important;
+  border: 1px solid #fecaca !important;
+}
+
+[data-theme="light"] .badge.locked {
+  background: #f1f5f9 !important;
+  color: #475569 !important;
+  border: 1px solid #e2e8f0 !important;
+}
+
+[data-theme="light"] .badge.unlocked {
+  background: #dbeafe !important;
+  color: #1d4ed8 !important;
+  border: 1px solid #bfdbfe !important;
+}
+
+/* Action Control Buttons in Side Panel */
+[data-theme="light"] .actions button {
+  background: #f8fafc !important;
+  color: #334155 !important;
+  border: 1px solid #cbd5e1 !important;
+}
+
+[data-theme="light"] .actions button:hover {
+  background: #f1f5f9 !important;
+  color: #0f172a !important;
+  border-color: #94a3b8 !important;
+}
+
+[data-theme="light"] .actions button[data-action="unlock"] {
+  background: #10b981 !important;
+  color: #ffffff !important;
+  border-color: #10b981 !important;
+}
+
+[data-theme="light"] .actions button[data-action="unlock"]:hover {
+  background: #059669 !important;
+  color: #ffffff !important;
+}
+
+[data-theme="light"] .actions button[data-action="lock"] {
+  background: #ef4444 !important;
+  color: #ffffff !important;
+  border-color: #ef4444 !important;
+}
+
+[data-theme="light"] .actions button[data-action="lock"]:hover {
+  background: #dc2626 !important;
+  color: #ffffff !important;
+}
+
+/* Audit Log & Events */
+[data-theme="light"] .audit-item {
+  background: #f8fafc !important;
+  border: 1px solid #e2e8f0 !important;
+}
+
+[data-theme="light"] .audit-item-top strong {
+  color: #0f172a !important;
+}
+
+[data-theme="light"] .audit-item-time {
+  color: #64748b !important;
+}
+
+[data-theme="light"] .audit-item-details {
+  color: #475569 !important;
+}
+
+[data-theme="light"] .audit-export-btn,
+[data-theme="light"] .audit-clear-btn {
+  background: #ffffff !important;
+  border: 1px solid #cbd5e1 !important;
+  color: #475569 !important;
+}
+
+[data-theme="light"] .audit-export-btn:hover,
+[data-theme="light"] .audit-clear-btn:hover {
+  background: #f1f5f9 !important;
+  color: #0f172a !important;
+}
+
+[data-theme="light"] .event {
+  border-bottom: 1px solid #f1f5f9 !important;
+}
+
+[data-theme="light"] .event strong {
+  color: #0f172a !important;
+}
+
+[data-theme="light"] .event p {
+  color: #475569 !important;
+}
+
+[data-theme="light"] .event time {
+  color: #64748b !important;
+}
+
+[data-theme="light"] .events h2 {
+  color: #0f172a !important;
+}
+
+[data-theme="light"] .audit-panel-header h2 {
+  color: #0f172a !important;
+}
+
+/* Map Popups */
 [data-theme="light"] .map-popup-card {
   background: rgba(255, 255, 255, 0.98);
   color: #0f172a;
@@ -87,6 +373,7 @@
   border-bottom-color: #ffffff !important;
 }
 
+/* Tables */
 [data-theme="light"] .table-wrap,
 [data-theme="light"] table {
   background: #ffffff;
@@ -105,6 +392,7 @@
   background: rgba(36, 212, 126, 0.12);
 }
 
+/* Search & Filters */
 [data-theme="light"] .search {
   background: #ffffff;
   border-color: var(--border);
@@ -132,6 +420,12 @@
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
 }
 
+/* Map Overlays & Containers */
+[data-theme="light"] .fleet-map-container {
+  border: 1px solid #e2e8f0 !important;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.04) !important;
+}
+
 [data-theme="light"] .map-overlay-top {
   background: transparent;
 }
@@ -153,6 +447,95 @@
   background: rgba(255, 255, 255, 0.95);
   color: #0f172a;
   border-color: rgba(0, 0, 0, 0.15);
+}
+
+/* Geofence Modal */
+[data-theme="light"] .modal-card {
+  background: #ffffff !important;
+  color: #0f172a !important;
+  border: 1px solid #e2e8f0 !important;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.15) !important;
+}
+
+[data-theme="light"] .modal-header {
+  border-bottom: 1px solid #e2e8f0 !important;
+}
+
+[data-theme="light"] .modal-header h2 {
+  color: #0f172a !important;
+}
+
+[data-theme="light"] .modal-close-btn {
+  background: #f1f5f9 !important;
+  border: 1px solid #e2e8f0 !important;
+  color: #64748b !important;
+}
+
+[data-theme="light"] .modal-close-btn:hover {
+  background: #e2e8f0 !important;
+  color: #0f172a !important;
+}
+
+[data-theme="light"] .form-toggle-row {
+  background: #f8fafc !important;
+  border: 1px solid #e2e8f0 !important;
+}
+
+[data-theme="light"] .form-toggle-info strong {
+  color: #0f172a !important;
+}
+
+[data-theme="light"] .form-toggle-info small {
+  color: #64748b !important;
+}
+
+[data-theme="light"] .modal-footer {
+  border-top: 1px solid #e2e8f0 !important;
+}
+
+[data-theme="light"] #geofence-modal-cancel {
+  background: #f1f5f9 !important;
+  color: #334155 !important;
+  border: 1px solid #cbd5e1 !important;
+}
+
+[data-theme="light"] #geofence-modal-cancel:hover {
+  background: #e2e8f0 !important;
+  color: #0f172a !important;
+}
+
+/* Map Markers in Light Mode */
+[data-theme="light"] .bike-map-marker .marker-pin {
+  background: #ffffff !important;
+  border-color: rgba(0, 0, 0, 0.15) !important;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.12) !important;
+}
+
+[data-theme="light"] .bike-map-marker .marker-battery {
+  color: #0f172a !important;
+}
+
+[data-theme="light"] .bike-map-marker .marker-arrow {
+  border-top-color: #ffffff !important;
+}
+
+[data-theme="light"] .bike-map-marker .marker-label {
+  background: rgba(255, 255, 255, 0.95) !important;
+  color: #0f172a !important;
+  border-color: rgba(0, 0, 0, 0.15) !important;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1) !important;
+}
+
+[data-theme="light"] .parking-station-marker .station-pin {
+  background: #00d2ff !important;
+  color: #ffffff !important;
+  box-shadow: 0 4px 10px rgba(0, 210, 255, 0.3) !important;
+}
+
+[data-theme="light"] .parking-station-marker .station-label {
+  background: rgba(255, 255, 255, 0.95) !important;
+  color: #0f172a !important;
+  border-color: rgba(0, 0, 0, 0.15) !important;
 }
 
 [data-theme="light"] .audit-card {
@@ -416,7 +799,7 @@ input:focus {
 .metric,
 .panel,
 .fleet-table {
-  background: rgba(26, 31, 29, 0.96);
+  background: var(--card);
   border: 1px solid var(--border);
   border-radius: 8px;
 }
