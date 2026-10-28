@@ -7,6 +7,7 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../demo/demo_pass_button.dart';
 import '../../../scooters/data/providers.dart';
+import '../../../scooters/domain/scooter.dart';
 import '../../../scooters/domain/scooter_code_translator.dart';
 import '../../domain/scooter_qr_payload.dart';
 
@@ -50,6 +51,22 @@ class _QrScanScreenState extends ConsumerState<QrScanScreen>
     _animController.dispose();
     _scannerController.dispose();
     super.dispose();
+  }
+
+  void _handleDemoPass() {
+    HapticFeedback.mediumImpact();
+    ref.read(selectedScooterProvider.notifier).state = const Scooter(
+      id: '7000000000001',
+      publicCode: 'ISK-001',
+      online: true,
+      batteryPercent: 92,
+      rangeKm: 28.5,
+      latitude: -1.9536,
+      longitude: 30.0612,
+    );
+    if (mounted) {
+      context.go('/unlocking');
+    }
   }
 
   Future<void> _handleFoundCode(String rawCode) async {
@@ -291,42 +308,48 @@ class _QrScanScreenState extends ConsumerState<QrScanScreen>
             ),
           ),
 
-          // 5. Bottom Action Bar: Controls + Demo Chips
+          // 5. Bottom Action Bar: Controls + Demo Pass
           Positioned(
             left: 0,
             right: 0,
-            bottom: 32,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Circular Action Buttons
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            bottom: 0,
+            child: SafeArea(
+              top: false,
+              child: Padding(
+                padding: const EdgeInsets.only(bottom: 24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    _CircularActionButton(
-                      icon: Icons.edit_outlined,
-                      label: 'Bike Num',
-                      onTap: () => context.go('/unlock-number'),
+                    // Circular Action Buttons
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        _CircularActionButton(
+                          icon: Icons.edit_outlined,
+                          label: 'Bike Num',
+                          onTap: () => context.go('/unlock-number'),
+                        ),
+                        _CircularActionButton(
+                          icon: _torchOn
+                              ? Icons.flashlight_on_rounded
+                              : Icons.flashlight_off_rounded,
+                          label: 'Torch',
+                          isActive: _torchOn,
+                          onTap: _toggleTorch,
+                        ),
+                      ],
                     ),
-                    _CircularActionButton(
-                      icon: _torchOn
-                          ? Icons.flashlight_on_rounded
-                          : Icons.flashlight_off_rounded,
-                      label: 'Torch',
-                      isActive: _torchOn,
-                      onTap: _toggleTorch,
+
+                    const SizedBox(height: 20),
+
+                    // Slick Demo Pass button positioned cleanly below the action buttons
+                    DemoPassButton(
+                      onPressed: _handleDemoPass,
+                      label: 'DEMO PASS',
                     ),
                   ],
                 ),
-
-                const SizedBox(height: 18),
-
-                // Slick Demo Pass button positioned cleanly below the action buttons
-                DemoPassButton(
-                  onPressed: () => _handleFoundCode('ISK-001'),
-                  label: '⚡ DEMO PASS',
-                ),
-              ],
+              ),
             ),
           ),
         ],
