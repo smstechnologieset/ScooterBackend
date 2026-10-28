@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
 import '../../../../core/theme/app_theme.dart';
+import '../../../demo/demo_pass_button.dart';
 import '../../../scooters/data/providers.dart';
 import '../../../scooters/domain/scooter_code_translator.dart';
 import '../../domain/scooter_qr_payload.dart';
@@ -318,35 +319,12 @@ class _QrScanScreenState extends ConsumerState<QrScanScreen>
                   ],
                 ),
 
-                const SizedBox(height: 20),
+                const SizedBox(height: 18),
 
-                // 1-Tap Quick Simulate Chips for testing
-                SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      _DemoChip(
-                        code: 'ISK-001',
-                        onTap: () => _handleFoundCode('ISK-001'),
-                      ),
-                      const SizedBox(width: 8),
-                      _DemoChip(
-                        code: 'ISK-002',
-                        onTap: () => _handleFoundCode('ISK-002'),
-                      ),
-                      const SizedBox(width: 8),
-                      _DemoChip(
-                        code: 'ISK-003',
-                        onTap: () => _handleFoundCode('ISK-003'),
-                      ),
-                      const SizedBox(width: 8),
-                      _DemoChip(
-                        code: 'ISK-004',
-                        onTap: () => _handleFoundCode('ISK-004'),
-                      ),
-                    ],
-                  ),
+                // Slick Demo Pass button positioned cleanly below the action buttons
+                DemoPassButton(
+                  onPressed: () => _handleFoundCode('ISK-001'),
+                  label: '⚡ DEMO PASS',
                 ),
               ],
             ),
@@ -412,29 +390,6 @@ class _CircularActionButton extends StatelessWidget {
           ),
         ],
       ),
-    );
-  }
-}
-
-class _DemoChip extends StatelessWidget {
-  const _DemoChip({required this.code, required this.onTap});
-
-  final String code;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return ActionChip(
-      avatar: const Icon(Icons.qr_code_rounded,
-          size: 14, color: AppTheme.primaryGreen),
-      label: Text(
-        code,
-        style: const TextStyle(
-            color: Colors.white, fontSize: 12, fontWeight: FontWeight.w700),
-      ),
-      backgroundColor: const Color(0xFF18221D),
-      side: const BorderSide(color: Color(0xFF2C3E34)),
-      onPressed: onTap,
     );
   }
 }

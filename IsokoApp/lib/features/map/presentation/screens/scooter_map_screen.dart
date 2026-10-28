@@ -14,7 +14,6 @@ import '../../../ride/domain/parking_zone.dart';
 import '../../../scooters/data/providers.dart';
 import '../../../scooters/domain/scooter.dart';
 import '../../../scooters/domain/scooter_code_translator.dart';
-import '../../../demo/demo_pass_button.dart';
 import '../../../scooters/presentation/widgets/scooter_card.dart';
 import '../../../scooters/presentation/widgets/scooter_detail_sheet.dart';
 import '../widgets/map_marker_generator.dart';
@@ -626,15 +625,6 @@ class _MapBottomPanel extends StatelessWidget {
                 ),
                 elevation: 0,
               ),
-            ),
-          ),
-
-          // Demo pass — skip directly to unlocking screen
-          const SizedBox(height: 10),
-          Center(
-            child: DemoPassButton(
-              onPressed: onScanQr, // navigates to /scan-qr where demo chips live
-              label: '⚡ DEMO — tap ISK chip to skip scan',
             ),
           ),
         ],
