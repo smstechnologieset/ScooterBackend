@@ -10,7 +10,7 @@ class AppConfig {
   static const String appName = 'Isoko Ride';
   static const String apiBaseUrl = String.fromEnvironment(
     'API_BASE_URL',
-    defaultValue: 'https://api.smstechnologieset.com',
+    defaultValue: 'https://62.171.160.225',
   );
   static const String supabaseUrl = String.fromEnvironment(
     'SUPABASE_URL',
