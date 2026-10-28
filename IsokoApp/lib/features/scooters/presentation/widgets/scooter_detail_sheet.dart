@@ -73,7 +73,7 @@ class ScooterDetailSheet extends StatelessWidget {
                     borderRadius: BorderRadius.circular(AppTheme.radiusMedium),
                   ),
                   child: const Icon(
-                    Icons.electric_scooter_rounded,
+                    Icons.pedal_bike_rounded,
                     color: AppTheme.primaryGreen,
                     size: 30,
                   ),
@@ -93,7 +93,7 @@ class ScooterDetailSheet extends StatelessWidget {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        'ISOKO Smart Lock Scooter',
+                        'ISOKO Smart E-bike',
                         style: TextStyle(
                           color: context.textSecondary,
                           fontSize: 13,

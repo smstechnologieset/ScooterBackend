@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import '../../../auth/presentation/widgets/isoko_logo.dart';
 import '../widgets/scooter_marker.dart';
 import '../widgets/scooter_card.dart';
@@ -195,9 +196,7 @@ class ScooterListScreen extends StatelessWidget {
                       
                       // Scan Now button
                       ScanButton(
-                        onPressed: () {
-                          // TODO: Open QR scanner
-                        },
+                        onPressed: () => context.go('/scan-qr'),
                       ),
                     ],
                   ),

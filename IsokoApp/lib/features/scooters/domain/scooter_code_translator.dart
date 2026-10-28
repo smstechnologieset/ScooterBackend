@@ -14,14 +14,7 @@ class ScooterCodeTranslator {
     for (var entry in _friendlyToDevice.entries) entry.value: entry.key,
   };
 
-  // Legacy mock codes fallback (e.g., BK2113 -> ISK-001)
-  static final Map<String, String> _legacyAliases = {
-    'BK2113': '700000000001',
-    'BK3113': '700000000002',
-    'BK2103': '700000000003',
-  };
-
-  /// Normalizes user input (e.g., "1", "001", "isk001", "ISK-001", "BK2113")
+  /// Normalizes user input (e.g., "1", "001", "isk001", "ISK-001")
   /// into the corresponding backend deviceId.
   static String toDeviceId(String input) {
     final cleaned = input.trim().toUpperCase().replaceAll(' ', '');
@@ -52,11 +45,6 @@ class ScooterCodeTranslator {
       return _friendlyToDevice[key] ?? cleaned;
     }
 
-    // Check legacy aliases
-    if (_legacyAliases.containsKey(cleaned)) {
-      return _legacyAliases[cleaned]!;
-    }
-
     // Otherwise treat as raw deviceId
     return cleaned;
   }
@@ -72,15 +60,6 @@ class ScooterCodeTranslator {
     // If it's already a friendly code
     if (cleaned.toUpperCase().startsWith('ISK-')) {
       return cleaned.toUpperCase();
-    }
-
-    // Try to match legacy alias values
-    for (final entry in _legacyAliases.entries) {
-      if (entry.value == cleaned) {
-        final friendly = _deviceToFriendly[cleaned];
-        if (friendly != null) return friendly;
-        return entry.key;
-      }
     }
 
     // Fallback: If deviceId ends with digits, create a clean short code

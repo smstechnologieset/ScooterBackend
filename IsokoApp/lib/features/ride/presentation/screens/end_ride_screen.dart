@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/app_theme.dart';
 import '../../../auth/presentation/widgets/isoko_logo.dart';
+import '../../../demo/demo_pass_button.dart';
 
 class EndRideScreen extends StatelessWidget {
   const EndRideScreen({super.key});
@@ -33,7 +34,11 @@ class EndRideScreen extends StatelessWidget {
                     onPressed: () => context.go('/menu'),
                   ),
                   const IsokoLogo(height: 38),
-                  const SizedBox(width: 48),
+                  // Demo pass — skip directly to parking photo
+                  DemoPassButton(
+                    onPressed: () => context.go('/parking-photo'),
+                    label: '⚡ DEMO',
+                  ),
                 ],
               ),
             ),

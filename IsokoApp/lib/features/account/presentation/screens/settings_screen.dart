@@ -7,6 +7,7 @@ import '../../../../core/localization/locale_provider.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/theme/theme_mode_provider.dart';
 import '../../../auth/data/providers.dart';
+import '../../data/distance_unit_provider.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -19,6 +20,7 @@ class SettingsScreen extends ConsumerWidget {
     final currentLanguageLabel = isFrench ? tr.french : tr.english;
 
     final activeThemeMode = ref.watch(themeModeProvider);
+    final activeDistanceUnit = ref.watch(distanceUnitProvider);
     final String currentAppModeLabel;
     switch (activeThemeMode) {
       case ThemeMode.light:
@@ -86,8 +88,9 @@ class SettingsScreen extends ConsumerWidget {
 
               _SettingsRow(
                 title: tr.distanceUnit,
-                value: tr.kmUnit,
-                onTap: () {},
+                value: activeDistanceUnit.label,
+                onTap: () =>
+                    _showDistanceUnitModal(context, ref, activeDistanceUnit),
               ),
 
               const SizedBox(height: 32),
@@ -96,12 +99,7 @@ class SettingsScreen extends ConsumerWidget {
 
               // Policy links
               GestureDetector(
-                onTap: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                        content: Text('ISOKO Terms & Conditions v1.0')),
-                  );
-                },
+                onTap: () => context.push('/terms'),
                 child: Padding(
                   padding: const EdgeInsets.symmetric(vertical: 8),
                   child: Text(
@@ -117,11 +115,7 @@ class SettingsScreen extends ConsumerWidget {
               const SizedBox(height: 12),
 
               GestureDetector(
-                onTap: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('ISOKO Privacy Policy v1.0')),
-                  );
-                },
+                onTap: () => context.push('/privacy'),
                 child: Padding(
                   padding: const EdgeInsets.symmetric(vertical: 8),
                   child: Text(
@@ -329,6 +323,89 @@ class SettingsScreen extends ConsumerWidget {
                   ref
                       .read(themeModeProvider.notifier)
                       .setThemeMode(ThemeMode.system);
+                  Navigator.of(ctx).pop();
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  void _showDistanceUnitModal(
+    BuildContext context,
+    WidgetRef ref,
+    DistanceUnit activeUnit,
+  ) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: context.surfaceBg,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) {
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(24, 20, 24, 36),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: context.dividerColor,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 20),
+              Text(
+                'Distance Unit',
+                style: TextStyle(
+                  color: context.textPrimary,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 20),
+
+              // Kilometers
+              _OptionCard(
+                icon: const Icon(
+                  Icons.speed_rounded,
+                  color: AppTheme.primaryGreen,
+                  size: 24,
+                ),
+                name: 'Kilometers (km)',
+                subname: 'Metric standard (Default)',
+                isSelected: activeUnit == DistanceUnit.kilometers,
+                onTap: () {
+                  ref
+                      .read(distanceUnitProvider.notifier)
+                      .setUnit(DistanceUnit.kilometers);
+                  Navigator.of(ctx).pop();
+                },
+              ),
+
+              const SizedBox(height: 12),
+
+              // Miles
+              _OptionCard(
+                icon: const Icon(
+                  Icons.navigation_rounded,
+                  color: Color(0xFF29B6F6),
+                  size: 24,
+                ),
+                name: 'Miles (mi)',
+                subname: 'Imperial standard',
+                isSelected: activeUnit == DistanceUnit.miles,
+                onTap: () {
+                  ref
+                      .read(distanceUnitProvider.notifier)
+                      .setUnit(DistanceUnit.miles);
                   Navigator.of(ctx).pop();
                 },
               ),

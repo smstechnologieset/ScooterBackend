@@ -313,13 +313,13 @@ class AppStringsEn implements AppStrings {
   String get endRideConfirmTitle => 'End Ride?';
   @override
   String get endRideConfirmMessage =>
-      'Are you sure you want to end your ride? Please ensure the scooter is safely parked at a designated station.';
+      'Are you sure you want to end your ride? Please ensure the E-bike is safely parked at a designated station.';
 
   @override
   String get takePicture => 'Take Picture';
   @override
   String get takePictureSubtitle =>
-      'Take a picture of the bike parked in the station';
+      'Take a picture of the E-bike parked in the station';
   @override
   String get verifyingParking => 'Verifying parking location...';
   @override
@@ -328,7 +328,7 @@ class AppStringsEn implements AppStrings {
   String get parkingRestricted => 'PARKING RESTRICTED';
   @override
   String get invalidParkingMessage =>
-      'It looks like you\'re outside a designated station. To end your ride, please move your scooter to a marked zone to avoid a penalty fee.';
+      'It looks like you\'re outside a designated station. To end your ride, please move your E-bike to a marked zone to avoid a penalty fee.';
   @override
   String get endRideBypass => 'End Ride Anyway (Demo Bypass)';
   @override
@@ -338,10 +338,10 @@ class AppStringsEn implements AppStrings {
       'Why do I need to park at a station?';
   @override
   String get parkingExplanationBody =>
-      'ISOKO scooters must be returned to designated parking stations after each ride. This ensures:\n\n'
-      '• Scooters are available for the next rider\n'
+      'ISOKO E-bikes must be returned to designated parking stations after each ride. This ensures:\n\n'
+      '• E-bikes are available for the next rider\n'
       '• Sidewalks and roads stay clear\n'
-      '• Scooters are parked safely and securely\n\n'
+      '• E-bikes are parked safely and securely\n\n'
       'Ending a ride outside a station may result in a penalty fee.';
 
   @override

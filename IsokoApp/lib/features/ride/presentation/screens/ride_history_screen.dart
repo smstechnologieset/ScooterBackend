@@ -10,6 +10,238 @@ import '../../domain/ride_session.dart';
 class RideHistoryScreen extends ConsumerWidget {
   const RideHistoryScreen({super.key});
 
+  void _showRideDetailsModal(
+    BuildContext context,
+    RideSession ride,
+    String displayCode,
+  ) {
+    final durationMin = ride.durationSeconds ~/ 60;
+    final avgSpeed = ride.durationSeconds > 0
+        ? (ride.distanceKm / (ride.durationSeconds / 3600)).clamp(0.0, 45.0)
+        : 0.0;
+
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: context.surfaceBg,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) {
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: context.dividerColor,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 18),
+              Row(
+                children: [
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: AppTheme.primaryGreen.withAlpha(25),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(
+                      Icons.pedal_bike_rounded,
+                      color: AppTheme.primaryGreen,
+                      size: 26,
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Isoko Ride $displayCode',
+                          style: TextStyle(
+                            color: context.textPrimary,
+                            fontSize: 18,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        Text(
+                          'Trip completed · Verified Parking',
+                          style: TextStyle(
+                            color: context.textSecondary,
+                            fontSize: 12.5,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: AppTheme.primaryGreen.withAlpha(25),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.check_circle_rounded,
+                            size: 14, color: AppTheme.primaryGreen),
+                        SizedBox(width: 4),
+                        Text(
+                          'PARKED',
+                          style: TextStyle(
+                            color: AppTheme.primaryGreen,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 22),
+
+              // Metrics 3-box Grid
+              Container(
+                padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
+                decoration: BoxDecoration(
+                  color: context.cardBg,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: context.cardBorder),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: _MetricItem(
+                        icon: Icons.timer_outlined,
+                        label: 'Duration',
+                        value: '${durationMin}m',
+                      ),
+                    ),
+                    Container(width: 1, height: 32, color: context.dividerColor),
+                    Expanded(
+                      child: _MetricItem(
+                        icon: Icons.straighten_rounded,
+                        label: 'Distance',
+                        value: '${ride.distanceKm.toStringAsFixed(1)} km',
+                      ),
+                    ),
+                    Container(width: 1, height: 32, color: context.dividerColor),
+                    Expanded(
+                      child: _MetricItem(
+                        icon: Icons.speed_rounded,
+                        label: 'Avg Speed',
+                        value: '${avgSpeed.toStringAsFixed(1)} km/h',
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 20),
+
+              // Fare Breakdown
+              Text(
+                'Receipt Breakdown',
+                style: TextStyle(
+                  color: context.textPrimary,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: context.cardBg,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: context.cardBorder),
+                ),
+                child: Column(
+                  children: [
+                    const _ReceiptRow(
+                      label: 'Base Unlock Fee',
+                      value: '500 RWF',
+                    ),
+                    const SizedBox(height: 8),
+                    _ReceiptRow(
+                      label: 'Distance Rate (${ride.distanceKm.toStringAsFixed(1)} km)',
+                      value: '${(ride.distanceKm * 50).toInt()} RWF',
+                    ),
+                    const SizedBox(height: 8),
+                    _ReceiptRow(
+                      label: 'Ride Time ($durationMin min)',
+                      value:
+                          '${(ride.costRwf - 500 - (ride.distanceKm * 50)).clamp(0, 50000).toInt()} RWF',
+                    ),
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 8),
+                      child: Divider(height: 1),
+                    ),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'Total Paid',
+                          style: TextStyle(
+                            color: context.textPrimary,
+                            fontSize: 15,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        Text(
+                          '${ride.costRwf.toInt()} RWF',
+                          style: const TextStyle(
+                            color: AppTheme.primaryGreen,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 20),
+
+              SizedBox(
+                width: double.infinity,
+                height: 48,
+                child: ElevatedButton(
+                  onPressed: () => Navigator.of(ctx).pop(),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppTheme.primaryGreen,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    elevation: 0,
+                  ),
+                  child: const Text(
+                    'Done',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final history = ref.watch(rideHistoryNotifierProvider);
@@ -91,60 +323,143 @@ class RideHistoryScreen extends ConsumerWidget {
             final displayCode =
                 ScooterCodeTranslator.formatDisplay(ride.scooterCode);
 
-            return Container(
-              margin: const EdgeInsets.only(bottom: 14),
-              padding: const EdgeInsets.fromLTRB(16, 16, 14, 16),
-              decoration: BoxDecoration(
-                color: context.cardBg,
-                borderRadius: BorderRadius.circular(18),
-                border: Border.all(color: context.cardBorder),
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Isoko ride $displayCode',
-                          style: TextStyle(
-                            color: context.textPrimary,
-                            fontSize: 16,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          '${ride.durationSeconds ~/ 60}m · ${ride.distanceKm.toStringAsFixed(1)}km',
-                          style: TextStyle(
-                            color: context.textSecondary,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
+            return InkWell(
+              onTap: () => _showRideDetailsModal(context, ride, displayCode),
+              borderRadius: BorderRadius.circular(18),
+              child: Container(
+                margin: const EdgeInsets.only(bottom: 14),
+                padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+                decoration: BoxDecoration(
+                  color: context.cardBg,
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(color: context.cardBorder),
+                ),
+                child: Row(
+                  children: [
+                    // E-bike Icon badge
+                    Container(
+                      width: 42,
+                      height: 42,
+                      decoration: BoxDecoration(
+                        color: AppTheme.primaryGreen.withAlpha(25),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Icon(
+                        Icons.pedal_bike_rounded,
+                        color: AppTheme.primaryGreen,
+                        size: 24,
+                      ),
                     ),
-                  ),
-                  Text(
-                    '${ride.costRwf.toInt()} RWF',
-                    style: const TextStyle(
-                      color: AppTheme.primaryGreen,
-                      fontSize: 15,
-                      fontWeight: FontWeight.w800,
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Isoko ride $displayCode',
+                            style: TextStyle(
+                              color: context.textPrimary,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            '${ride.durationSeconds ~/ 60}m · ${ride.distanceKm.toStringAsFixed(1)}km',
+                            style: TextStyle(
+                              color: context.textSecondary,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  Icon(
-                    Icons.chevron_right_rounded,
-                    color: context.textSecondary,
-                    size: 22,
-                  ),
-                ],
+                    Text(
+                      '${ride.costRwf.toInt()} RWF',
+                      style: const TextStyle(
+                        color: AppTheme.primaryGreen,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Icon(
+                      Icons.chevron_right_rounded,
+                      color: context.textSecondary,
+                      size: 22,
+                    ),
+                  ],
+                ),
               ),
             );
           },
         ),
       ),
+    );
+  }
+}
+
+class _MetricItem extends StatelessWidget {
+  const _MetricItem({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Icon(icon, size: 20, color: AppTheme.primaryGreen),
+        const SizedBox(height: 4),
+        Text(
+          value,
+          style: TextStyle(
+            color: context.textPrimary,
+            fontSize: 14,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        Text(
+          label,
+          style: TextStyle(
+            color: context.textSecondary,
+            fontSize: 11,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ReceiptRow extends StatelessWidget {
+  const _ReceiptRow({required this.label, required this.value});
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(
+          label,
+          style: TextStyle(color: context.textSecondary, fontSize: 13),
+        ),
+        Text(
+          value,
+          style: TextStyle(
+            color: context.textPrimary,
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
     );
   }
 }

@@ -26,6 +26,8 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         return null;
       }
 
+      final isPublicLegalRoute =
+          location == '/terms' || location == '/privacy';
       final isPublicAuthRoute = location == '/sign-in' ||
           location == '/sign-up' ||
           location == '/check-email' ||
@@ -44,6 +46,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
 
       if (authRefresh.isPasswordRecovery) {
         return location == '/reset-password' ? null : '/reset-password';
+      }
+
+      if (isPublicLegalRoute) {
+        return null;
       }
 
       if (isTransientAuthRoute) {

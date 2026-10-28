@@ -134,30 +134,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     }
   }
 
-  Future<void> _changePassword() async {
-    if (!_passwordFormKey.currentState!.validate()) return;
-    setState(() {
-      _savingPassword = true;
-      _passwordError = null;
-    });
-
-    try {
-      await ref.read(profileRepositoryProvider).updatePassword(
-            currentPassword: _currentPasswordController.text,
-            newPassword: _newPasswordController.text,
-          );
-      _currentPasswordController.clear();
-      _newPasswordController.clear();
-      _confirmPasswordController.clear();
-      TextInput.finishAutofillContext();
-      if (mounted) _showMessage('Password updated.');
-    } on ProfileFailure catch (error) {
-      if (mounted) setState(() => _passwordError = error.message);
-    } finally {
-      if (mounted) setState(() => _savingPassword = false);
-    }
-  }
-
   Future<void> _chooseAvatar() async {
     if (_uploadingAvatar) return;
     setState(() {
@@ -273,6 +249,224 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       case null:
         return;
     }
+  }
+
+  Future<void> _showChangePasswordModal(BuildContext context) async {
+    _currentPasswordController.clear();
+    _newPasswordController.clear();
+    _confirmPasswordController.clear();
+    setState(() => _passwordError = null);
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: context.surfaceBg,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (sheetContext) {
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            return Padding(
+              padding: EdgeInsets.fromLTRB(
+                24,
+                20,
+                24,
+                MediaQuery.of(context).viewInsets.bottom + 28,
+              ),
+              child: SingleChildScrollView(
+                child: AutofillGroup(
+                  child: Form(
+                    key: _passwordFormKey,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Center(
+                          child: Container(
+                            width: 40,
+                            height: 4,
+                            decoration: BoxDecoration(
+                              color: context.dividerColor,
+                              borderRadius: BorderRadius.circular(2),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 18),
+                        Text(
+                          'Change Password',
+                          style: TextStyle(
+                            color: context.textPrimary,
+                            fontSize: 20,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          'Enter your current password and a new secure password.',
+                          style: TextStyle(
+                            color: context.textSecondary,
+                            fontSize: 13,
+                          ),
+                        ),
+                        const SizedBox(height: 20),
+                        _PasswordField(
+                          controller: _currentPasswordController,
+                          label: 'Current password',
+                          obscureText: _obscureCurrentPassword,
+                          enabled: !_savingPassword,
+                          autofillHint: AutofillHints.password,
+                          onToggleVisibility: () => setSheetState(
+                            () => _obscureCurrentPassword =
+                                !_obscureCurrentPassword,
+                          ),
+                          validator: (value) => (value?.isEmpty ?? true)
+                              ? 'Enter your current password.'
+                              : null,
+                        ),
+                        const SizedBox(height: 14),
+                        _PasswordField(
+                          controller: _newPasswordController,
+                          label: 'New password',
+                          obscureText: _obscureNewPassword,
+                          enabled: !_savingPassword,
+                          autofillHint: AutofillHints.newPassword,
+                          onToggleVisibility: () => setSheetState(
+                            () => _obscureNewPassword = !_obscureNewPassword,
+                          ),
+                          validator: (value) => (value?.length ?? 0) < 8
+                              ? 'Use at least 8 characters.'
+                              : null,
+                        ),
+                        const SizedBox(height: 14),
+                        _PasswordField(
+                          controller: _confirmPasswordController,
+                          label: 'Confirm new password',
+                          obscureText: _obscureConfirmPassword,
+                          enabled: !_savingPassword,
+                          autofillHint: AutofillHints.newPassword,
+                          textInputAction: TextInputAction.done,
+                          onFieldSubmitted: (_) async {
+                            if (!_savingPassword) {
+                              if (!_passwordFormKey.currentState!.validate()) {
+                                return;
+                              }
+                              setSheetState(() {
+                                _savingPassword = true;
+                                _passwordError = null;
+                              });
+                              final navigator = Navigator.of(sheetContext);
+                              try {
+                                await ref
+                                    .read(profileRepositoryProvider)
+                                    .updatePassword(
+                                      currentPassword:
+                                          _currentPasswordController.text,
+                                      newPassword: _newPasswordController.text,
+                                    );
+                                _currentPasswordController.clear();
+                                _newPasswordController.clear();
+                                _confirmPasswordController.clear();
+                                TextInput.finishAutofillContext();
+                                if (mounted) {
+                                  navigator.pop();
+                                  _showMessage(
+                                      'Password updated successfully.');
+                                }
+                              } on ProfileFailure catch (error) {
+                                if (mounted) {
+                                  setSheetState(
+                                      () => _passwordError = error.message);
+                                }
+                              } finally {
+                                if (mounted) {
+                                  setSheetState(() => _savingPassword = false);
+                                }
+                              }
+                            }
+                          },
+                          onToggleVisibility: () => setSheetState(
+                            () => _obscureConfirmPassword =
+                                !_obscureConfirmPassword,
+                          ),
+                          validator: (value) =>
+                              value != _newPasswordController.text
+                                  ? 'Passwords do not match.'
+                                  : null,
+                        ),
+                        if (_passwordError != null) ...[
+                          const SizedBox(height: 14),
+                          _ErrorMessage(message: _passwordError!),
+                        ],
+                        const SizedBox(height: 22),
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton.icon(
+                            onPressed: _savingPassword
+                                ? null
+                                : () async {
+                                    if (!_passwordFormKey.currentState!
+                                        .validate()) {
+                                      return;
+                                    }
+                                    setSheetState(() {
+                                      _savingPassword = true;
+                                      _passwordError = null;
+                                    });
+                                    final navigator =
+                                        Navigator.of(sheetContext);
+                                    try {
+                                      await ref
+                                          .read(profileRepositoryProvider)
+                                          .updatePassword(
+                                            currentPassword:
+                                                _currentPasswordController.text,
+                                            newPassword:
+                                                _newPasswordController.text,
+                                          );
+                                      _currentPasswordController.clear();
+                                      _newPasswordController.clear();
+                                      _confirmPasswordController.clear();
+                                      TextInput.finishAutofillContext();
+                                      if (mounted) {
+                                        navigator.pop();
+                                        _showMessage(
+                                            'Password updated successfully.');
+                                      }
+                                    } on ProfileFailure catch (error) {
+                                      if (mounted) {
+                                        setSheetState(() =>
+                                            _passwordError = error.message);
+                                      }
+                                    } finally {
+                                      if (mounted) {
+                                        setSheetState(() =>
+                                            _savingPassword = false);
+                                      }
+                                    }
+                                  },
+                            icon: _savingPassword
+                                ? const SizedBox.square(
+                                    dimension: 18,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.black,
+                                    ),
+                                  )
+                                : const Icon(Icons.check_circle_outline),
+                            label: const Text('Update Password'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
   }
 
   void _showMessage(String message) {
@@ -450,87 +644,32 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   ),
                   const SizedBox(height: 38),
                   const Divider(color: AppTheme.cardBorder),
-                  const SizedBox(height: 30),
+                  const SizedBox(height: 28),
                   Text(
-                    'Password',
+                    'Security',
                     style: Theme.of(context).textTheme.titleLarge,
                   ),
-                  const SizedBox(height: 18),
-                  AutofillGroup(
-                    child: Form(
-                      key: _passwordFormKey,
-                      child: Column(
-                        children: [
-                          _PasswordField(
-                            controller: _currentPasswordController,
-                            label: 'Current password',
-                            obscureText: _obscureCurrentPassword,
-                            enabled: !busy,
-                            autofillHint: AutofillHints.password,
-                            onToggleVisibility: () => setState(
-                              () => _obscureCurrentPassword =
-                                  !_obscureCurrentPassword,
-                            ),
-                            validator: (value) => (value?.isEmpty ?? true)
-                                ? 'Enter your current password.'
-                                : null,
-                          ),
-                          const SizedBox(height: 16),
-                          _PasswordField(
-                            controller: _newPasswordController,
-                            label: 'New password',
-                            obscureText: _obscureNewPassword,
-                            enabled: !busy,
-                            autofillHint: AutofillHints.newPassword,
-                            onToggleVisibility: () => setState(
-                              () => _obscureNewPassword = !_obscureNewPassword,
-                            ),
-                            validator: (value) => (value?.length ?? 0) < 8
-                                ? 'Use at least 8 characters.'
-                                : null,
-                          ),
-                          const SizedBox(height: 16),
-                          _PasswordField(
-                            controller: _confirmPasswordController,
-                            label: 'Confirm new password',
-                            obscureText: _obscureConfirmPassword,
-                            enabled: !busy,
-                            autofillHint: AutofillHints.newPassword,
-                            textInputAction: TextInputAction.done,
-                            onFieldSubmitted: (_) => _changePassword(),
-                            onToggleVisibility: () => setState(
-                              () => _obscureConfirmPassword =
-                                  !_obscureConfirmPassword,
-                            ),
-                            validator: (value) =>
-                                value != _newPasswordController.text
-                                    ? 'Passwords do not match.'
-                                    : null,
-                          ),
-                        ],
-                      ),
-                    ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Update your account password and security credentials.',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: context.textSecondary,
+                        ),
                   ),
-                  if (_passwordError != null) ...[
-                    const SizedBox(height: 16),
-                    _ErrorMessage(message: _passwordError!),
-                  ],
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 18),
                   SizedBox(
                     width: double.infinity,
                     child: OutlinedButton.icon(
-                      onPressed: busy ? null : _changePassword,
-                      icon: _savingPassword
-                          ? const SizedBox.square(
-                              dimension: 18,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(Icons.lock_reset),
-                      label: const Text('Update password'),
+                      onPressed: busy
+                          ? null
+                          : () => _showChangePasswordModal(context),
+                      icon: const Icon(Icons.lock_reset_rounded),
+                      label: const Text('Change Password'),
                       style: OutlinedButton.styleFrom(
                         foregroundColor: AppTheme.primaryGreen,
-                        side: const BorderSide(color: AppTheme.primaryGreen),
-                        padding: const EdgeInsets.symmetric(vertical: 17),
+                        side: const BorderSide(
+                            color: AppTheme.primaryGreen, width: 1.5),
+                        padding: const EdgeInsets.symmetric(vertical: 16),
                         shape: RoundedRectangleBorder(
                           borderRadius:
                               BorderRadius.circular(AppTheme.radiusMedium),

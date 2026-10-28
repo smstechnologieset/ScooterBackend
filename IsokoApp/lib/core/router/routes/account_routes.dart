@@ -7,6 +7,8 @@ import '../../../features/account/presentation/screens/referral_screen.dart';
 import '../../../features/account/presentation/screens/settings_screen.dart';
 import '../../../features/account/presentation/screens/transactions_screen.dart';
 import '../../../features/account/presentation/screens/tutorial_screen.dart';
+import '../../../features/account/presentation/screens/privacy_policy_screen.dart';
+import '../../../features/account/presentation/screens/terms_and_conditions_screen.dart';
 import '../../../features/ride/presentation/screens/ride_history_screen.dart';
 
 final accountRoutes = <RouteBase>[
@@ -34,6 +36,16 @@ final accountRoutes = <RouteBase>[
     path: '/settings',
     name: 'settings',
     builder: (context, state) => const SettingsScreen(),
+  ),
+  GoRoute(
+    path: '/terms',
+    name: 'terms',
+    builder: (context, state) => const TermsAndConditionsScreen(),
+  ),
+  GoRoute(
+    path: '/privacy',
+    name: 'privacy',
+    builder: (context, state) => const PrivacyPolicyScreen(),
   ),
   GoRoute(
     path: '/faq',

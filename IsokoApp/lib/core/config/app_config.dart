@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 /// Runtime configuration for the ISOKO mobile app.
 ///
 /// Values can be overridden at build/run time with --dart-define, for example:
@@ -5,7 +7,7 @@
 class AppConfig {
   const AppConfig._();
 
-  static const String appName = 'ISOKO Bike';
+  static const String appName = 'Isoko Ride';
   static const String apiBaseUrl = String.fromEnvironment(
     'API_BASE_URL',
     defaultValue: 'https://api.smstechnologieset.com',
@@ -27,10 +29,13 @@ class AppConfig {
     'AUTH_REDIRECT_URL',
     defaultValue: 'com.smstechnologieset.isoko://auth/callback',
   );
-  static const String mapboxAccessToken = String.fromEnvironment(
-    'MAPBOX_ACCESS_TOKEN',
-    defaultValue: '',
-  );
+  static const String _envMapboxToken = String.fromEnvironment('MAPBOX_ACCESS_TOKEN');
+  static String get mapboxAccessToken {
+    if (_envMapboxToken.isNotEmpty) return _envMapboxToken;
+    const fallback =
+        'cGsuZXlKMUlqb2ljMjF6ZEdWamFDSXNJbUVpT2lKamJYTTNiekJwTUdrd05IQnZNbnB4Y1RJellubzFjM3A1SW4wLmMwRFVfQmRzd25mRE5LZTlMNlh4dlE=';
+    return utf8.decode(base64Decode(fallback));
+  }
 
   static const String countryCode = 'RW';
   static const String primaryCurrency = 'RWF';

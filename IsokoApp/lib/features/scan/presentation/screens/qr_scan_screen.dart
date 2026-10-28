@@ -77,7 +77,7 @@ class _QrScanScreenState extends ConsumerState<QrScanScreen>
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Could not find scooter: $rawCode'),
+            content: Text('Could not find bike: $rawCode'),
             backgroundColor: AppTheme.danger,
           ),
         );
@@ -188,7 +188,7 @@ class _QrScanScreenState extends ConsumerState<QrScanScreen>
                     ],
                   ),
                   child: const Icon(
-                    Icons.electric_scooter_rounded,
+                    Icons.pedal_bike_rounded,
                     color: Colors.white,
                     size: 32,
                   ),

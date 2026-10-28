@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/app_theme.dart';
 import '../../../auth/presentation/widgets/isoko_logo.dart';
+import '../../../demo/demo_pass_button.dart';
 import '../../../scooters/domain/scooter_code_translator.dart';
 import '../../data/ride_controller.dart';
 import '../../domain/ride_session.dart';
@@ -53,6 +54,18 @@ class RideActiveScreen extends ConsumerWidget {
                   const IsokoLogo(height: 38),
                   const SizedBox(width: 48), // Balance spacing
                 ],
+              ),
+            ),
+          ),
+
+          // Demo pass — skip to end ride screen
+          Positioned(
+            top: 70,
+            right: 18,
+            child: SafeArea(
+              child: DemoPassButton(
+                onPressed: () => context.go('/end-ride'),
+                label: '⚡ DEMO',
               ),
             ),
           ),

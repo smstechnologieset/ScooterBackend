@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/app_theme.dart';
+import '../../../demo/demo_pass_button.dart';
 import '../../../ride/data/ride_controller.dart';
 import '../../../scooters/domain/scooter_code_translator.dart';
 import '../../data/payment_api.dart';
@@ -555,6 +556,19 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
             }
           },
         ),
+        actions: [
+          // Demo pass — simulate successful payment
+          Padding(
+            padding: const EdgeInsets.only(right: 14),
+            child: Center(
+              child: DemoPassButton(
+                onPressed: () =>
+                    context.go('/payment-success', extra: _totalDue),
+                label: '⚡ DEMO',
+              ),
+            ),
+          ),
+        ],
       ),
       body: SafeArea(
         child: _step == 1
