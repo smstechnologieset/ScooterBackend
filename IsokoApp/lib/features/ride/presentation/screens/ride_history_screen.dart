@@ -330,69 +330,69 @@ class RideHistoryScreen extends ConsumerWidget {
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
           itemCount: displayRides.length,
           itemBuilder: (ctx, i) {
-                final ride = displayRides[i];
-                final displayCode =
-                    ScooterCodeTranslator.formatDisplay(ride.scooterCode);
+            final ride = displayRides[i];
+            final displayCode =
+                ScooterCodeTranslator.formatDisplay(ride.scooterCode);
 
-                return InkWell(
-                  onTap: () =>
-                      _showRideDetailsModal(context, ride, displayCode, unit),
+            return InkWell(
+              onTap: () =>
+                  _showRideDetailsModal(context, ride, displayCode, unit),
+              borderRadius: BorderRadius.circular(18),
+              child: Container(
+                margin: const EdgeInsets.only(bottom: 14),
+                padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+                decoration: BoxDecoration(
+                  color: context.cardBg,
                   borderRadius: BorderRadius.circular(18),
-                  child: Container(
-                    margin: const EdgeInsets.only(bottom: 14),
-                    padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
-                    decoration: BoxDecoration(
-                      color: context.cardBg,
-                      borderRadius: BorderRadius.circular(18),
-                      border: Border.all(color: context.cardBorder),
+                  border: Border.all(color: context.cardBorder),
+                ),
+                child: Row(
+                  children: [
+                    // E-bike Image badge
+                    Container(
+                      width: 48,
+                      height: 48,
+                      padding: const EdgeInsets.all(4),
+                      decoration: BoxDecoration(
+                        color: AppTheme.primaryGreen.withAlpha(25),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                          color: AppTheme.primaryGreen.withAlpha(60),
+                          width: 1,
+                        ),
+                      ),
+                      child: Image.asset(
+                        'assets/images/bike.png',
+                        fit: BoxFit.contain,
+                      ),
                     ),
-                    child: Row(
-                      children: [
-                        // E-bike Image badge
-                        Container(
-                          width: 48,
-                          height: 48,
-                          padding: const EdgeInsets.all(4),
-                          decoration: BoxDecoration(
-                            color: AppTheme.primaryGreen.withAlpha(25),
-                            borderRadius: BorderRadius.circular(14),
-                            border: Border.all(
-                              color: AppTheme.primaryGreen.withAlpha(60),
-                              width: 1,
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Isoko ride $displayCode',
+                            style: TextStyle(
+                              color: context.textPrimary,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w800,
                             ),
                           ),
-                          child: Image.asset(
-                            'assets/images/bike.png',
-                            fit: BoxFit.contain,
+                          const SizedBox(height: 4),
+                          Text(
+                            '${ride.durationSeconds ~/ 60}m · ${unit.formatWithSpace(ride.distanceKm)}',
+                            style: TextStyle(
+                              color: context.textSecondary,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
-                        ),
-                        const SizedBox(width: 14),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Isoko ride $displayCode',
-                                style: TextStyle(
-                                  color: context.textPrimary,
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w800,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                '${ride.durationSeconds ~/ 60}m · ${unit.formatWithSpace(ride.distanceKm)}',
-                                style: TextStyle(
-                                  color: context.textSecondary,
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        Text(
-                          '${ride.costRwf.toInt()} RWF',
+                        ],
+                      ),
+                    ),
+                    Text(
+                      '${ride.costRwf.toInt()} RWF',
                       style: const TextStyle(
                         color: AppTheme.primaryGreen,
                         fontSize: 15,

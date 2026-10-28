@@ -7422,4 +7422,51 @@ Future priorities (When Hardware & SIM Cards Arrive):
      - Enhanced `initOrUpdateMap` with DOM attachment verification and theme-aware initial style loading.
      - Completed comprehensive Light Mode CSS coverage: metric stat cards, side panel tabs, hardware details, table rows, alert banners, modal, and action buttons now feature clean, high-contrast light aesthetics with no unstyled dark boxes.
 
+## Session History: Client App Review, Branding Assets, Demo Pass Flow, Native Share/Intents, Distance Unit, and Domain Resilience (October 2026)
+
+- **Context:** The client conducted an evaluation of an earlier build and provided an "Isoko App Review" feedback report covering:
+  1. Account Creation: Link verification requirements, Terms and Agreement clickability, bike imagery.
+  2. General: Terminology update from "Scooter" to "E-bike", updated company logo and bike artwork with clean transparent backgrounds, app naming ("Isoko Ride"), Scan Now button reliability, bike code prefix standardization (`ISK`).
+  3. Profile: Distinct password change action button.
+  4. Ride History: Replacement of line-art bike emoji with real transparent E-bike artwork, previous ride clickability for detailed trip metrics.
+  5. Payment & Wallet: Payment method switcher and checkout resilience.
+  6. Referral: Native referral sharing on WhatsApp and external social platforms (TikTok, Instagram, Facebook, Messages).
+  7. Help & FAQ: Interactive Contact Us actions (Phone dialer, WhatsApp chat, Email client).
+  8. Settings: Distance unit switcher (`km` vs `miles`) dynamically affecting all ride and payment calculations, terms & privacy policy display.
+  9. Tutorial: Onboarding video and "Start Ride Now" navigation.
+  10. Client Demo Pass Requirement: Unobtrusive "Demo Pass" controls allowing client to step through the entire app lifecycle without physical hardware.
+  11. VPS Domain Outage: Loss of domain `smstechnologieset.com` causing API calls to receive registrar HTML parking pages.
+
+- **Actions Taken:**
+  1. **Branding & Graphic Overhaul:**
+     - Replaced `assets/images/logo.png` and `assets/images/bike.png` with new clean, transparent-background PNG assets.
+     - Generated high-resolution Android launcher icons centered in safe-zone bounds across all densities (`mipmap-mdpi`, `mipmap-hdpi`, `mipmap-xhdpi`, `mipmap-xxhdpi`, `mipmap-xxxhdpi`) for `ic_launcher.png`, `ic_launcher_round.png`, and `ic_launcher_foreground.png` on brand background `#0C100E`.
+  2. **Seamless Demo Pass Flow:**
+     - Created `DemoPassButton` (`IsokoApp/lib/features/demo/demo_pass_button.dart`) with sleek, dark-pill styling and glowing amber accent.
+     - Positioned on `QrScanScreen` below the Torch and Bike Num buttons, removing redundant `ISK-001` through `ISK-004` chips.
+     - Enabled demo pass triggers throughout the complete ride lifecycle: QR scan simulation -> unlock animation -> active ride HUD -> parking verification -> checkout settlement.
+  3. **Backend & Payment Resilience (Domain Outage Handling):**
+     - Diagnosed `FormatException: Unexpected character (at character 1) <html>`: Expired `smstechnologieset.com` was resolving to registrar landing pages, returning HTML strings instead of JSON.
+     - Updated `AppConfig.apiBaseUrl` to target the live VPS direct IP (`https://62.171.160.225`).
+     - Added `badCertificateCallback` in `api_client_io.dart` for direct IP SSL communication.
+     - Hardened API client and `PaymentNotifier` to validate JSON content types before decoding, with self-healing fallback mechanisms to ensure wallet and card checkout never block riders during domain migrations.
+  4. **Ride History Polish & Detail Sheets:**
+     - Replaced `Icons.pedal_bike_rounded` in `ride_history_screen.dart` with transparent `assets/images/bike.png` inside a 48x48 rounded container.
+     - Added `_showRideDetailsModal` bottom sheet displaying itemized trip duration, distance, average speed, cost in RWF, and vehicle code.
+     - Cleaned up widget structure to ensure clean compilation and zero analyzer issues.
+  5. **Native Device Sharing & Contact Intents:**
+     - Installed `url_launcher: ^6.3.2` and `share_plus: ^12.0.2`.
+     - Declared `<queries>` intent filters in `AndroidManifest.xml` for `tel:`, `mailto:`, and `https:` for Android 11+ package visibility.
+     - In `referral_screen.dart`: Configured "Share on WhatsApp" to open `whatsapp://send?text=...` with web fallback, and "Share link" to summon the OS native share sheet via `SharePlus.instance.share(ShareParams(...))`.
+     - In `faq_screen.dart`: Configured "Call Now" to trigger native dialer (`tel:+250788000000`), "Open Chat" to open WhatsApp support chat, and "Email Help Desk" to open pre-addressed email drafts (`mailto:support@isoko.rw`).
+  6. **Dynamic Distance Unit Conversion (km vs. miles):**
+     - Enhanced `DistanceUnit` in `distance_unit_provider.dart` with `convert`, `format`, and `formatWithSpace` methods (using `1 km = 0.621371 mi`).
+     - Connected `distanceUnitProvider` across `ride_history_screen.dart`, `ride_active_screen.dart`, and `payment_screen.dart` to dynamically display miles (`mi`) and speed in `mph` when selected in Settings.
+  7. **Tutorial Navigation & Routing Safeguards:**
+     - Fixed `tutorial_screen.dart` navigation destination from obsolete `/map` to `/find-scooter`.
+     - Added an alias route in `scooter_routes.dart` redirecting `/map` to `/find-scooter` to prevent future `GoException: no routes for location: /map` crashes.
+  8. **Code Quality & Build Verification:**
+     - Verified `flutter analyze lib` passes with **0 issues found**.
+     - Verified `flutter build apk --debug` builds successfully.
+
 For every future significant action, update current architecture/status/configuration/dependencies/file history/objectives, preserve historical decisions/problems/session entries, append a Session History entry, and refresh this final Resume Context before ending the session.
