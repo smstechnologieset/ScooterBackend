@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/app_theme.dart';
+import '../../../account/data/distance_unit_provider.dart';
 import '../../../demo/demo_pass_button.dart';
 import '../../../ride/data/ride_controller.dart';
 import '../../../scooters/domain/scooter_code_translator.dart';
@@ -542,11 +543,12 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final unit = ref.watch(distanceUnitProvider);
     final lastRide = ref.watch(lastCompletedRideProvider);
     final duration = lastRide?.formattedDuration ?? '29:13 min';
     final distance = lastRide != null
-        ? '${lastRide.distanceKm.toStringAsFixed(1)}km'
-        : '9.5km';
+        ? unit.format(lastRide.distanceKm)
+        : unit.format(9.5);
     final rawCode = lastRide?.scooterCode ?? 'ISK-001';
     final displayCode = ScooterCodeTranslator.formatDisplay(rawCode);
 

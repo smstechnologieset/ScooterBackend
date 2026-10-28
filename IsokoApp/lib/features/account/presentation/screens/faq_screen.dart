@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../../core/theme/app_theme.dart';
 
@@ -132,17 +133,24 @@ class _FaqScreenState extends State<FaqScreen> {
                 title: 'Phone Support',
                 subtitle: '+250 788 000 000',
                 actionLabel: 'Call Now',
-                onTap: () {
-                  Clipboard.setData(
-                    const ClipboardData(text: '+250788000000'),
-                  );
+                onTap: () async {
                   Navigator.of(ctx).pop();
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Support line copied: +250 788 000 000'),
-                      duration: Duration(seconds: 2),
-                    ),
-                  );
+                  final telUri = Uri.parse('tel:+250788000000');
+                  try {
+                    await launchUrl(telUri);
+                  } catch (_) {
+                    await Clipboard.setData(
+                      const ClipboardData(text: '+250788000000'),
+                    );
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content:
+                              Text('Support phone copied: +250 788 000 000'),
+                        ),
+                      );
+                    }
+                  }
                 },
               ),
 
@@ -155,17 +163,37 @@ class _FaqScreenState extends State<FaqScreen> {
                 title: 'WhatsApp Assistance',
                 subtitle: '+250 788 000 000',
                 actionLabel: 'Open Chat',
-                onTap: () {
-                  Clipboard.setData(
-                    const ClipboardData(text: '+250788000000'),
-                  );
+                onTap: () async {
                   Navigator.of(ctx).pop();
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Opening WhatsApp support (+250 788 000 000)...'),
-                      duration: Duration(seconds: 2),
-                    ),
+                  final whatsappUri = Uri.parse(
+                    'whatsapp://send?phone=250788000000&text=${Uri.encodeComponent('Hello Isoko Support, I need assistance with my ride.')}',
                   );
+                  final webWhatsappUri = Uri.parse(
+                    'https://api.whatsapp.com/send?phone=250788000000&text=${Uri.encodeComponent('Hello Isoko Support, I need assistance with my ride.')}',
+                  );
+
+                  try {
+                    if (await canLaunchUrl(whatsappUri)) {
+                      await launchUrl(whatsappUri);
+                    } else if (await canLaunchUrl(webWhatsappUri)) {
+                      await launchUrl(
+                        webWhatsappUri,
+                        mode: LaunchMode.externalApplication,
+                      );
+                    } else {
+                      await Clipboard.setData(
+                        const ClipboardData(text: '+250788000000'),
+                      );
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text(
+                                'WhatsApp number copied: +250 788 000 000'),
+                          ),
+                        );
+                      }
+                    }
+                  } catch (_) {}
                 },
               ),
 
@@ -177,18 +205,29 @@ class _FaqScreenState extends State<FaqScreen> {
                 iconColor: const Color(0xFF42A5F5),
                 title: 'Email Help Desk',
                 subtitle: 'support@isoko.rw',
-                actionLabel: 'Copy Email',
-                onTap: () {
-                  Clipboard.setData(
-                    const ClipboardData(text: 'support@isoko.rw'),
-                  );
+                actionLabel: 'Send Email',
+                onTap: () async {
                   Navigator.of(ctx).pop();
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Support email copied: support@isoko.rw'),
-                      duration: Duration(seconds: 2),
-                    ),
+                  final mailUri = Uri.parse(
+                    'mailto:support@isoko.rw?subject=${Uri.encodeComponent('Isoko Ride Support Request')}',
                   );
+                  try {
+                    if (await canLaunchUrl(mailUri)) {
+                      await launchUrl(mailUri);
+                    } else {
+                      await Clipboard.setData(
+                        const ClipboardData(text: 'support@isoko.rw'),
+                      );
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content:
+                                Text('Support email copied: support@isoko.rw'),
+                          ),
+                        );
+                      }
+                    }
+                  } catch (_) {}
                 },
               ),
             ],

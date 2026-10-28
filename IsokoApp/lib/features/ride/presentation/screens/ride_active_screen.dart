@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/app_theme.dart';
+import '../../../account/data/distance_unit_provider.dart';
 import '../../../auth/presentation/widgets/isoko_logo.dart';
 import '../../../demo/demo_pass_button.dart';
 import '../../../scooters/domain/scooter_code_translator.dart';
@@ -17,10 +18,11 @@ class RideActiveScreen extends ConsumerWidget {
     final ride = ref.watch(rideControllerProvider);
     final rideNotifier = ref.read(rideControllerProvider.notifier);
 
+    final unit = ref.watch(distanceUnitProvider);
     final duration = ride?.formattedDuration ?? '00:00';
     final distance = ride != null
-        ? '${ride.distanceKm.toStringAsFixed(2)} km'
-        : '0.00 km';
+        ? unit.formatWithSpace(ride.distanceKm, fractionDigits: 2)
+        : unit.formatWithSpace(0.0, fractionDigits: 2);
     final rawCode = ride?.scooterCode ?? 'ISK-001';
     final displayCode = ScooterCodeTranslator.formatDisplay(rawCode);
     final isPaused = ride?.isPaused ?? false;
@@ -146,7 +148,7 @@ class RideActiveScreen extends ConsumerWidget {
                           Text(
                             isPaused
                                 ? 'Paused • Motor Lock Engaged'
-                                : 'Active Ride • Live ${(ride?.currentSpeedKmh ?? 0.0) > 0 ? '${ride?.currentSpeedKmh} km/h' : 'GPS Tracking'}',
+                                : 'Active Ride • Live ${(ride?.currentSpeedKmh ?? 0.0) > 0 ? (unit == DistanceUnit.miles ? '${((ride?.currentSpeedKmh ?? 0.0) * 0.621371).toStringAsFixed(1)} mph' : '${ride?.currentSpeedKmh} km/h') : 'GPS Tracking'}',
                             style: TextStyle(
                               color: isPaused
                                   ? Colors.amber
@@ -215,7 +217,9 @@ class RideActiveScreen extends ConsumerWidget {
                       Expanded(
                         child: _MetricItem(
                           label: isPaused ? 'Motor Status' : 'Current Speed',
-                          value: isPaused ? 'Locked' : '18 km/h',
+                          value: isPaused
+                              ? 'Locked'
+                              : (unit == DistanceUnit.miles ? '11 mph' : '18 km/h'),
                           icon: isPaused
                               ? Icons.lock_outline_rounded
                               : Icons.speed_rounded,

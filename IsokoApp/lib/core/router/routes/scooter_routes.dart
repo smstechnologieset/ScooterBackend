@@ -12,6 +12,10 @@ final scooterRoutes = <RouteBase>[
     builder: (context, state) => const ScooterMapScreen(),
   ),
   GoRoute(
+    path: '/map',
+    redirect: (context, state) => '/find-scooter',
+  ),
+  GoRoute(
     path: '/scooter-locating',
     redirect: (context, state) => '/find-scooter',
   ),

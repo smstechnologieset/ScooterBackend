@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../../core/theme/app_theme.dart';
 
@@ -10,7 +12,7 @@ class ReferralScreen extends StatelessWidget {
   static const String _referralCode = 'ISOKO-RIDE26';
   static const String _referralUrl = 'https://isokoride.com/ref/ISOKO-RIDE26';
   static const String _inviteMessage =
-      'Join me on Isoko Ride! Use my code ISOKO-RIDE26 to get free ride credits: https://isokoride.com/ref/ISOKO-RIDE26';
+      'Join me on Isoko Ride! Use my code $_referralCode to get free ride credits: $_referralUrl';
 
   @override
   Widget build(BuildContext context) {
@@ -164,16 +166,34 @@ class ReferralScreen extends StatelessWidget {
                 height: 52,
                 child: ElevatedButton.icon(
                   onPressed: () async {
-                    await Clipboard.setData(
-                      const ClipboardData(text: _inviteMessage),
+                    final whatsappUri = Uri.parse(
+                      'whatsapp://send?text=${Uri.encodeComponent(_inviteMessage)}',
                     );
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text(
-                              'WhatsApp message copied! Paste into WhatsApp to invite friends.'),
-                          backgroundColor: Color(0xFF25D366),
-                          duration: Duration(seconds: 3),
+                    final webWhatsappUri = Uri.parse(
+                      'https://api.whatsapp.com/send?text=${Uri.encodeComponent(_inviteMessage)}',
+                    );
+
+                    try {
+                      if (await canLaunchUrl(whatsappUri)) {
+                        await launchUrl(whatsappUri);
+                      } else if (await canLaunchUrl(webWhatsappUri)) {
+                        await launchUrl(
+                          webWhatsappUri,
+                          mode: LaunchMode.externalApplication,
+                        );
+                      } else {
+                        await SharePlus.instance.share(
+                          ShareParams(
+                            text: _inviteMessage,
+                            subject: 'Join me on Isoko Ride!',
+                          ),
+                        );
+                      }
+                    } catch (_) {
+                      await SharePlus.instance.share(
+                        ShareParams(
+                          text: _inviteMessage,
+                          subject: 'Join me on Isoko Ride!',
                         ),
                       );
                     }
@@ -203,18 +223,12 @@ class ReferralScreen extends StatelessWidget {
                 height: 52,
                 child: ElevatedButton.icon(
                   onPressed: () async {
-                    await Clipboard.setData(
-                      const ClipboardData(text: _referralUrl),
+                    await SharePlus.instance.share(
+                      ShareParams(
+                        text: _inviteMessage,
+                        subject: 'Join me on Isoko Ride!',
+                      ),
                     );
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text(
-                              'Referral link copied to clipboard! (https://isokoride.com/ref/ISOKO-RIDE26)'),
-                          duration: Duration(seconds: 2),
-                        ),
-                      );
-                    }
                   },
                   icon: Icon(Icons.share_rounded,
                       color: context.isDarkMode ? Colors.black : Colors.white,

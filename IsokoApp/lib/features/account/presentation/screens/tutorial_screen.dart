@@ -292,7 +292,7 @@ class _TutorialScreenState extends State<TutorialScreen> {
                       child: ElevatedButton(
                         onPressed: () {
                           if (isLast) {
-                            context.go('/map');
+                            context.go('/find-scooter');
                           } else {
                             _pageController.nextPage(
                               duration: const Duration(milliseconds: 300),

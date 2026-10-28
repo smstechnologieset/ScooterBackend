@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/app_theme.dart';
+import '../../../account/data/distance_unit_provider.dart';
 import '../../../scooters/domain/scooter_code_translator.dart';
 import '../../data/ride_controller.dart';
 import '../../domain/ride_session.dart';
@@ -14,11 +15,15 @@ class RideHistoryScreen extends ConsumerWidget {
     BuildContext context,
     RideSession ride,
     String displayCode,
+    DistanceUnit unit,
   ) {
     final durationMin = ride.durationSeconds ~/ 60;
     final avgSpeed = ride.durationSeconds > 0
         ? (ride.distanceKm / (ride.durationSeconds / 3600)).clamp(0.0, 45.0)
         : 0.0;
+    final displaySpeed = unit == DistanceUnit.miles
+        ? '${(avgSpeed * 0.621371).toStringAsFixed(1)} mph'
+        : '${avgSpeed.toStringAsFixed(1)} km/h';
 
     showModalBottomSheet<void>(
       context: context,
@@ -47,16 +52,20 @@ class RideHistoryScreen extends ConsumerWidget {
               Row(
                 children: [
                   Container(
-                    width: 44,
-                    height: 44,
+                    width: 52,
+                    height: 52,
+                    padding: const EdgeInsets.all(5),
                     decoration: BoxDecoration(
                       color: AppTheme.primaryGreen.withAlpha(25),
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(
+                        color: AppTheme.primaryGreen.withAlpha(70),
+                        width: 1,
+                      ),
                     ),
-                    child: const Icon(
-                      Icons.pedal_bike_rounded,
-                      color: AppTheme.primaryGreen,
-                      size: 26,
+                    child: Image.asset(
+                      'assets/images/bike.png',
+                      fit: BoxFit.contain,
                     ),
                   ),
                   const SizedBox(width: 14),
@@ -132,7 +141,7 @@ class RideHistoryScreen extends ConsumerWidget {
                       child: _MetricItem(
                         icon: Icons.straighten_rounded,
                         label: 'Distance',
-                        value: '${ride.distanceKm.toStringAsFixed(1)} km',
+                        value: unit.formatWithSpace(ride.distanceKm),
                       ),
                     ),
                     Container(width: 1, height: 32, color: context.dividerColor),
@@ -140,7 +149,7 @@ class RideHistoryScreen extends ConsumerWidget {
                       child: _MetricItem(
                         icon: Icons.speed_rounded,
                         label: 'Avg Speed',
-                        value: '${avgSpeed.toStringAsFixed(1)} km/h',
+                        value: displaySpeed,
                       ),
                     ),
                   ],
@@ -295,6 +304,8 @@ class RideHistoryScreen extends ConsumerWidget {
             ),
           ];
 
+    final unit = ref.watch(distanceUnitProvider);
+
     return Scaffold(
       backgroundColor: context.scaffoldBg,
       appBar: AppBar(
@@ -319,64 +330,69 @@ class RideHistoryScreen extends ConsumerWidget {
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
           itemCount: displayRides.length,
           itemBuilder: (ctx, i) {
-            final ride = displayRides[i];
-            final displayCode =
-                ScooterCodeTranslator.formatDisplay(ride.scooterCode);
+                final ride = displayRides[i];
+                final displayCode =
+                    ScooterCodeTranslator.formatDisplay(ride.scooterCode);
 
-            return InkWell(
-              onTap: () => _showRideDetailsModal(context, ride, displayCode),
-              borderRadius: BorderRadius.circular(18),
-              child: Container(
-                margin: const EdgeInsets.only(bottom: 14),
-                padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
-                decoration: BoxDecoration(
-                  color: context.cardBg,
+                return InkWell(
+                  onTap: () =>
+                      _showRideDetailsModal(context, ride, displayCode, unit),
                   borderRadius: BorderRadius.circular(18),
-                  border: Border.all(color: context.cardBorder),
-                ),
-                child: Row(
-                  children: [
-                    // E-bike Icon badge
-                    Container(
-                      width: 42,
-                      height: 42,
-                      decoration: BoxDecoration(
-                        color: AppTheme.primaryGreen.withAlpha(25),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: const Icon(
-                        Icons.pedal_bike_rounded,
-                        color: AppTheme.primaryGreen,
-                        size: 24,
-                      ),
+                  child: Container(
+                    margin: const EdgeInsets.only(bottom: 14),
+                    padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+                    decoration: BoxDecoration(
+                      color: context.cardBg,
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(color: context.cardBorder),
                     ),
-                    const SizedBox(width: 14),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Isoko ride $displayCode',
-                            style: TextStyle(
-                              color: context.textPrimary,
-                              fontSize: 16,
-                              fontWeight: FontWeight.w800,
+                    child: Row(
+                      children: [
+                        // E-bike Image badge
+                        Container(
+                          width: 48,
+                          height: 48,
+                          padding: const EdgeInsets.all(4),
+                          decoration: BoxDecoration(
+                            color: AppTheme.primaryGreen.withAlpha(25),
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(
+                              color: AppTheme.primaryGreen.withAlpha(60),
+                              width: 1,
                             ),
                           ),
-                          const SizedBox(height: 4),
-                          Text(
-                            '${ride.durationSeconds ~/ 60}m · ${ride.distanceKm.toStringAsFixed(1)}km',
-                            style: TextStyle(
-                              color: context.textSecondary,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                            ),
+                          child: Image.asset(
+                            'assets/images/bike.png',
+                            fit: BoxFit.contain,
                           ),
-                        ],
-                      ),
-                    ),
-                    Text(
-                      '${ride.costRwf.toInt()} RWF',
+                        ),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Isoko ride $displayCode',
+                                style: TextStyle(
+                                  color: context.textPrimary,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                '${ride.durationSeconds ~/ 60}m · ${unit.formatWithSpace(ride.distanceKm)}',
+                                style: TextStyle(
+                                  color: context.textSecondary,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Text(
+                          '${ride.costRwf.toInt()} RWF',
                       style: const TextStyle(
                         color: AppTheme.primaryGreen,
                         fontSize: 15,
